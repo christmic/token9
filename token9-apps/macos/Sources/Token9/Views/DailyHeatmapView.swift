@@ -4,11 +4,8 @@ struct DailyHeatmapView: View {
     let dailyTotals: [DailyTotal]
     let mode: ThemeMode
 
-    private let s: CGFloat = 3       // spacing
-    private let c: CGFloat = 14      // cell
     private let cols = 7
     private let hdrs = ["日", "一", "二", "三", "四", "五", "六"]
-
     private let rows: [[HeatCell]]
     private let maxT: Int64
     private let label: String
@@ -20,8 +17,8 @@ struct DailyHeatmapView: View {
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
         let mf  = DateFormatter(); mf.dateFormat = "yyyy MMMM"
         let cal = Calendar.current; let now = Date()
-
         let comps = cal.dateComponents([.year, .month], from: now)
+
         guard let from = cal.date(from: comps),
               let dr = cal.range(of: .day, in: .month, for: now) else {
             rows = []; maxT = 0; label = ""
@@ -43,7 +40,8 @@ struct DailyHeatmapView: View {
         while cur <= sat {
             let k = fmt.string(from: cur); let v = lu[k] ?? 0
             let inR = cur >= from && cur <= to
-            flat.append(HeatCell(date: k, tokens: v, inRange: inR))
+            let day = cal.component(.day, from: cur)
+            flat.append(HeatCell(date: k, tokens: v, inRange: inR, day: day))
             if inR, v > mx { mx = v }
             cur = cal.date(byAdding: .day, value: 1, to: cur)!
         }
@@ -57,11 +55,9 @@ struct DailyHeatmapView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 0) {
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.tPrimary)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.tPrimary)
                 Spacer()
                 HStack(spacing: 2) {
                     Text(L10n.less).font(.system(size: 8)).foregroundStyle(Theme.tTertiary)
@@ -74,27 +70,27 @@ struct DailyHeatmapView: View {
                 }
             }
 
-            VStack(spacing: s) {
-                HStack(spacing: s) {
+            VStack(spacing: 2) {
+                HStack(spacing: 2) {
                     ForEach(0..<cols, id: \.self) { i in
-                        Text(hdrs[i]).font(.system(size: 8, design: .monospaced))
-                            .foregroundStyle(Theme.tTertiary).frame(width: c)
+                        Text(hdrs[i]).font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(Theme.tTertiary)
+                            .frame(maxWidth: .infinity)
                     }
                 }
                 ForEach(rows.indices, id: \.self) { ri in
-                    HStack(spacing: s) {
+                    HStack(spacing: 2) {
                         ForEach(rows[ri]) { cl in
-                            RoundedRectangle(cornerRadius: 2)
+                            RoundedRectangle(cornerRadius: 4)
                                 .fill(cl.inRange ? hex(cl.tokens) : Color.clear)
-                                .frame(width: c, height: c)
+                                .frame(maxWidth: .infinity)
+                                .aspectRatio(1, contentMode: .fit)
                         }
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.black.opacity(0.14))
@@ -102,8 +98,8 @@ struct DailyHeatmapView: View {
     }
 
     private func hex(_ t: Int64) -> Color {
-        let a = Theme.accent(mode)
         guard t > 0, maxT > 0 else { return Color.white.opacity(0.05) }
+        let a = Theme.accent(mode)
         switch Double(t) / Double(maxT) {
         case 0..<0.15: return a.opacity(0.12)
         case 0.15..<0.35: return a.opacity(0.26)
@@ -113,12 +109,10 @@ struct DailyHeatmapView: View {
         }
     }
 
-    private func fill(_ o: Double) -> Color {
-        Theme.accent(mode).opacity(o)
-    }
+    private func fill(_ o: Double) -> Color { Theme.accent(mode).opacity(o) }
 }
 
 private struct HeatCell: Identifiable {
     let id = UUID()
-    let date: String; let tokens: Int64; let inRange: Bool
+    let date: String; let tokens: Int64; let inRange: Bool; let day: Int
 }
