@@ -56,7 +56,8 @@ final class DashboardViewModel: ObservableObject {
         reload()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.reload() }
+            guard let self else { return }
+            Task { @MainActor in self.reload() }
         }
     }
 
