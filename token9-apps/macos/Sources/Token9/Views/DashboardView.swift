@@ -11,7 +11,7 @@ struct DashboardView: View {
             VisualEffect().ignoresSafeArea()
             Theme.bg(mode).ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 topBar
                 SegmentedTabs(sel: $vm.range)
                 groupBar
@@ -20,7 +20,7 @@ struct DashboardView: View {
             }
             .padding(Theme.outerPad)
         }
-        .frame(width: 440, height: 620)
+        .frame(width: 500, height: 660)
         .onAppear { vm.start() }
         .onDisappear { vm.stop() }
     }
@@ -30,10 +30,7 @@ struct DashboardView: View {
             Image(systemName: "timer")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Theme.accent(mode))
-            VStack(alignment: .leading, spacing: 0) {
-                Text("token9").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.tPrimary)
-                Text("本地 AI 用量").font(.system(size: 9.5)).foregroundStyle(Theme.tTertiary)
-            }
+            Text("token9").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.tPrimary)
             Spacer()
             if let at = vm.updatedAt {
                 Text(timeString(at)).font(.system(size: 9.5, design: .monospaced))
@@ -47,16 +44,12 @@ struct DashboardView: View {
     }
 
     private var groupBar: some View {
-        HStack(spacing: 8) {
-            Text("汇总维度").font(.system(size: 10)).foregroundStyle(Theme.tTertiary)
-            Picker("", selection: $vm.groupBy) {
-                ForEach(GroupBy.allCases) { g in Text(g.label).tag(g) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 150)
-            Spacer()
+        Picker("", selection: $vm.groupBy) {
+            ForEach(GroupBy.allCases) { g in Text(g.label).tag(g) }
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 150)
     }
 
     @ViewBuilder
@@ -82,10 +75,7 @@ struct DashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 13) {
                     if vm.cards.count > 1 {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("分布").font(.system(size: 10)).foregroundStyle(Theme.tTertiary)
-                            DistributionChart(cards: vm.cards)
-                        }
+                        DistributionChart(cards: vm.cards)
                     }
                     ForEach(vm.cards) { card in
                         GroupCardView(card: card, subTitle: vm.groupBy.subTitle)
