@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_DIR="$ROOT/clients/macos"
+APP_DIR="$ROOT/token9-apps/macos"
 BUNDLE="$APP_DIR/Token9.app"
 
 cd "$APP_DIR"

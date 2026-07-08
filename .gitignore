@@ -1,5 +1,5 @@
 /target
-/clients/macos/.build
+/token9-apps/macos/.build
 Token9.app
 *.db
 *.db-journal
