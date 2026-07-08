@@ -1,20 +1,12 @@
 import Foundation
 import SwiftUI
 
-/// One day of aggregated token consumption (all providers/models/tools merged).
-struct DailyTotal: Identifiable {
-    let date: String
-    let tokens: Int64
-    let requests: Int64
-    var id: String { date }
-}
-
 /// Aggregation dimension for the cards.
 enum GroupBy: String, CaseIterable, Identifiable {
     case tool, model
     var id: String { rawValue }
-    var label: String { self == .tool ? L10n.groupByTool : L10n.groupByModel }
-    var subTitle: String { self == .tool ? L10n.subByModel : L10n.subByTool }
+    var label: String { self == .tool ? "工具" : "模型" }
+    var subTitle: String { self == .tool ? "按模型" : "按工具" }
 }
 
 /// A breakdown line inside a card (the other dimension).
@@ -51,7 +43,6 @@ final class DashboardViewModel: ObservableObject {
     @Published var range: RangeKey = .today { didSet { reload() } }
     @Published var groupBy: GroupBy = .tool { didSet { rebuild() } }
     @Published var cards: [GroupCard] = []
-    @Published var dailyTotals: [DailyTotal] = []
     @Published var updatedAt: Date?
     @Published var loading = false
     @Published var error: String?
@@ -93,20 +84,6 @@ final class DashboardViewModel: ObservableObject {
 
     private func rebuild() {
         cards = Self.aggregate(buckets, groupBy: groupBy, rateLimits: rateLimits)
-        computeDailyTotals()
-    }
-
-    private func computeDailyTotals() {
-        var dict: [String: (tokens: Int64, requests: Int64)] = [:]
-        for b in buckets {
-            let total = b.input_tokens + b.output_tokens + b.cache_read_tokens + b.cache_write_tokens
-            var entry = dict[b.date] ?? (0, 0)
-            entry.tokens += total
-            entry.requests += b.requests
-            dict[b.date] = entry
-        }
-        dailyTotals = dict.map { DailyTotal(date: $0.key, tokens: $0.value.tokens, requests: $0.value.requests) }
-            .sorted { $0.date < $1.date }
     }
 
     static func aggregate(_ buckets: [StatBucketDto], groupBy: GroupBy, rateLimits: [RateLimitDto]) -> [GroupCard] {

@@ -3,7 +3,6 @@ import SwiftUI
 struct DashboardView: View {
     @StateObject private var vm = DashboardViewModel()
     @AppStorage("themeMode") private var themeRaw = ThemeMode.warm.rawValue
-    @AppStorage("lang") private var langRaw = AppLang.zh.rawValue
 
     private var mode: ThemeMode { ThemeMode(rawValue: themeRaw) ?? .warm }
 
@@ -12,21 +11,15 @@ struct DashboardView: View {
             VisualEffect().ignoresSafeArea()
             Theme.bg(mode).ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 topBar
                 SegmentedTabs(sel: $vm.range)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        heatmapSection
-                        groupBar
-                        contentBody
-                    }
-                    .padding(.bottom, 6)
-                }
+                groupBar
+                content
             }
             .padding(Theme.outerPad)
         }
-        .frame(width: 500, height: 660)
+        .frame(width: 440, height: 620)
         .onAppear { vm.start() }
         .onDisappear { vm.stop() }
     }
@@ -36,7 +29,10 @@ struct DashboardView: View {
             Image(systemName: "timer")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Theme.accent(mode))
-            Text("token9").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.tPrimary)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("token9").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.tPrimary)
+                Text("本地 AI 用量").font(.system(size: 9.5)).foregroundStyle(Theme.tTertiary)
+            }
             Spacer()
             if let at = vm.updatedAt {
                 Text(timeString(at)).font(.system(size: 9.5, design: .monospaced))
@@ -45,53 +41,43 @@ struct DashboardView: View {
             IconButton(icon: mode.icon) {
                 withAnimation(.easeOut(duration: 0.25)) { themeRaw = mode.next.rawValue }
             }
-            Button {
-                let cur = AppLang(rawValue: langRaw) ?? .zh
-                withAnimation(.easeOut(duration: 0.25)) { langRaw = cur.next.rawValue }
-            } label: {
-                Text(AppLang(rawValue: langRaw)?.label ?? "中")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Theme.tSecondary)
-                    .frame(width: 28, height: 24)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.primary.opacity(0.08)))
-            }
-            .buttonStyle(.plain)
             IconButton(icon: "arrow.clockwise") { vm.reload() }
         }
     }
 
     private var groupBar: some View {
-        Picker("", selection: $vm.groupBy) {
-            ForEach(GroupBy.allCases) { g in Text(g.label).tag(g) }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 150)
-    }
-
-    @ViewBuilder
-    private var heatmapSection: some View {
-        if vm.range == .today, !vm.dailyTotals.isEmpty {
-            DailyHeatmapView(
-                dailyTotals: vm.dailyTotals,
-                mode: mode
-            )
-            .transition(.opacity)
+        HStack(spacing: 8) {
+            Text("汇总维度").font(.system(size: 10)).foregroundStyle(Theme.tTertiary)
+            Picker("", selection: $vm.groupBy) {
+                ForEach(GroupBy.allCases) { g in Text(g.label).tag(g) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 150)
+            Spacer()
         }
     }
 
     @ViewBuilder
-    private var contentBody: some View {
+    private var content: some View {
         if let e = vm.error, vm.cards.isEmpty {
             errorState(e)
         } else if vm.cards.isEmpty && !vm.loading {
             emptyState
         } else {
-            VStack(alignment: .leading, spacing: 13) {
-                ForEach(vm.cards) { card in
-                    GroupCardView(card: card, subTitle: vm.groupBy.subTitle)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 13) {
+                    if vm.cards.count > 1 {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("分布").font(.system(size: 10)).foregroundStyle(Theme.tTertiary)
+                            DistributionChart(cards: vm.cards)
+                        }
+                    }
+                    ForEach(vm.cards) { card in
+                        GroupCardView(card: card, subTitle: vm.groupBy.subTitle)
+                    }
                 }
+                .padding(.bottom, 6)
             }
         }
     }
@@ -100,8 +86,8 @@ struct DashboardView: View {
         VStack(spacing: 8) {
             Image(systemName: "chart.bar.doc.horizontal")
                 .font(.system(size: 30)).foregroundStyle(Theme.tTertiary)
-            Text(L10n.noData).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.tSecondary)
-            Text(L10n.noDataHint)
+            Text("暂无数据").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.tSecondary)
+            Text("让工具走 token9 (127.0.0.1:9527) 后即可看到用量")
                 .font(.system(size: 10)).foregroundStyle(Theme.tTertiary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,8 +97,8 @@ struct DashboardView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 26)).foregroundStyle(.orange)
-            Text(L10n.connFailed).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.tSecondary)
-            Text(L10n.connHint).font(.system(size: 10)).foregroundStyle(Theme.tTertiary)
+            Text("连接失败").font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.tSecondary)
+            Text("token9 serve 在 :9527 运行吗？").font(.system(size: 10)).foregroundStyle(Theme.tTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

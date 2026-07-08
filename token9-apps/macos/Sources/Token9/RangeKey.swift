@@ -8,12 +8,12 @@ enum RangeKey: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .yesterday: return L10n.yesterday
-        case .today: return L10n.today
-        case .week: return L10n.week
-        case .lastWeek: return L10n.lastWeek
-        case .month: return L10n.month
-        case .year: return L10n.year
+        case .yesterday: return "昨日"
+        case .today: return "今日"
+        case .week: return "本周"
+        case .lastWeek: return "上周"
+        case .month: return "本月"
+        case .year: return "本年"
         }
     }
 
