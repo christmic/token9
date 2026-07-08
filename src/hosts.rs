@@ -1,0 +1,80 @@
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+
+const HOSTS_PATH: &str = "/etc/hosts";
+
+fn entry_line(domain: &str) -> String {
+    format!("127.0.0.1\t{domain}\t# token9")
+}
+
+/// True if `/etc/hosts` already maps `domain` to 127.0.0.1.
+fn has_entry(content: &str, domain: &str) -> bool {
+    content.lines().any(|line| {
+        let line = line.trim();
+        if line.starts_with('#') {
+            return false;
+        }
+        let mut toks = line.split_whitespace();
+        matches!(toks.next(), Some("127.0.0.1"))
+            && toks.take_while(|t| !t.starts_with('#')).any(|t| t == domain)
+    })
+}
+
+pub fn status(domain: &str) -> anyhow::Result<()> {
+    let content = fs::read_to_string(HOSTS_PATH).unwrap_or_default();
+    if has_entry(&content, domain) {
+        println!("installed: 127.0.0.1 -> {domain} (in {HOSTS_PATH})");
+    } else {
+        println!("not installed: no 127.0.0.1 -> {domain} entry in {HOSTS_PATH}");
+        println!("run `token9 hosts install` to add it");
+    }
+    Ok(())
+}
+
+pub fn install(domain: &str) -> anyhow::Result<()> {
+    let content = fs::read_to_string(HOSTS_PATH).unwrap_or_default();
+    if has_entry(&content, domain) {
+        println!("already installed: 127.0.0.1 -> {domain}");
+        return Ok(());
+    }
+
+    let line = entry_line(domain);
+    match OpenOptions::new().append(true).open(HOSTS_PATH) {
+        Ok(mut f) => {
+            writeln!(f, "\n{line}")?;
+            println!("installed: {line}");
+            println!("you can now use http://{domain}:<port>");
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            println!("cannot write {HOSTS_PATH} (needs root). run this yourself:");
+            println!("  echo '{line}' | sudo tee -a {HOSTS_PATH}");
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_entry() {
+        let c = "127.0.0.1 localhost\n127.0.0.1\ttoken9.test\t# token9\n";
+        assert!(has_entry(c, "token9.test"));
+        assert!(!has_entry(c, "other.test"));
+    }
+
+    #[test]
+    fn ignores_commented_lines() {
+        let c = "# 127.0.0.1 token9.test\n";
+        assert!(!has_entry(c, "token9.test"));
+    }
+
+    #[test]
+    fn requires_loopback_ip() {
+        let c = "10.0.0.1 token9.test\n";
+        assert!(!has_entry(c, "token9.test"));
+    }
+}

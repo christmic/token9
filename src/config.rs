@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::str::FromStr;
 
 use figment::{
     Figment,
@@ -6,38 +6,29 @@ use figment::{
 };
 use serde::Deserialize;
 
+/// Bootstrap config. Only what's needed to start the server and open the DB.
+/// Providers and logical models live in SQLite, not here.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     #[serde(default = "default_port")]
     pub port: u16,
     #[serde(default = "default_bind")]
     pub bind: String,
+    #[serde(default = "default_domain")]
+    pub domain: String,
     #[serde(default = "default_db")]
     pub db_path: String,
-    #[serde(default)]
-    pub providers: HashMap<String, Provider>,
-    #[serde(default)]
-    pub routes: Vec<Route>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct Provider {
-    pub base_url: String,
-    #[serde(default)]
-    pub api_key_env: Option<String>,
-    pub dialect: Dialect,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Route {
-    pub model_id: String,
-    pub provider: String,
-    /// Real upstream model name. Defaults to `model_id` (no body rewrite).
-    #[serde(default)]
-    pub real_model: Option<String>,
-    /// Opt-in: inject `stream_options.include_usage` for OpenAI Chat streaming.
-    #[serde(default)]
-    pub inject_usage: bool,
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            port: default_port(),
+            bind: default_bind(),
+            domain: default_domain(),
+            db_path: default_db(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -63,11 +54,28 @@ impl Dialect {
     }
 }
 
+impl FromStr for Dialect {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "anthropic" => Ok(Dialect::Anthropic),
+            "openai_chat" => Ok(Dialect::OpenaiChat),
+            "openai_responses" => Ok(Dialect::OpenaiResponses),
+            other => Err(format!(
+                "unknown dialect `{other}` (expected anthropic|openai_chat|openai_responses)"
+            )),
+        }
+    }
+}
+
 fn default_port() -> u16 {
     9527
 }
 fn default_bind() -> String {
     "127.0.0.1".to_string()
+}
+fn default_domain() -> String {
+    "token9.test".to_string()
 }
 fn default_db() -> String {
     "~/.Oraculo/config/token9/token9.db".to_string()
@@ -76,6 +84,7 @@ fn default_db() -> String {
 impl Config {
     pub fn load(path: &str) -> anyhow::Result<Self> {
         let path = expand_tilde(path);
+        // Missing file is fine — defaults + env cover it.
         let cfg: Config = Figment::new()
             .merge(Toml::file(&path))
             .merge(Env::prefixed("TOKEN9_"))

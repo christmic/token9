@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use crate::AppState;
 use crate::error::AppError;
 use crate::metering::{self, MeterMeta};
-use crate::router::{self, RouteError, Target};
+use crate::router::Target;
 use crate::store::RequestRow;
 
 /// Headers we never forward as-is (transport / auth are handled explicitly).
@@ -48,12 +48,11 @@ pub async fn proxy(
         .ok_or_else(|| AppError::bad_request("request body has no `model` field"))?
         .to_string();
 
-    let target = router::resolve(&state.config, &model_id).map_err(|e| match e {
-        RouteError::NoRoute(_) => AppError::new(StatusCode::NOT_FOUND, e.to_string()),
-        RouteError::UnknownProvider(..) => {
-            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        }
-    })?;
+    let target = {
+        let rt = state.routes.read().await;
+        rt.resolve(&model_id)
+    }
+    .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, format!("no route for model `{model_id}`")))?;
 
     let stream = json.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
 
