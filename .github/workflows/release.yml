@@ -27,10 +27,11 @@ jobs:
           cp target/aarch64-apple-darwin/release/token9 dist/token9-macos-arm64/bin/
           strip dist/token9-macos-arm64/bin/token9
 
+      - name: Install typeshare
+        run: brew install typeshare-cli
+
       - name: Generate Swift types
-        run: |
-          cargo install typeshare-cli
-          ./scripts/gen-types.sh
+        run: ./scripts/gen-types.sh
 
       - name: Build Swift app
         working-directory: token9-apps/macos
