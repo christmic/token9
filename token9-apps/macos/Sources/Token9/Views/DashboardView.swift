@@ -72,11 +72,9 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var heatmapSection: some View {
-        if !vm.dailyTotals.isEmpty {
+        if vm.range == .today, !vm.dailyTotals.isEmpty {
             DailyHeatmapView(
                 dailyTotals: vm.dailyTotals,
-                fromDate: vm.range.range().from,
-                toDate: vm.range.range().to,
                 mode: mode
             )
             .transition(.opacity)

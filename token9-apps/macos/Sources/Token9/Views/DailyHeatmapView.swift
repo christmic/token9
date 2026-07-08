@@ -2,8 +2,6 @@ import SwiftUI
 
 struct DailyHeatmapView: View {
     let dailyTotals: [DailyTotal]
-    let fromDate: String
-    let toDate: String
     let mode: ThemeMode
 
     private let spacing: CGFloat = 2
@@ -13,20 +11,21 @@ struct DailyHeatmapView: View {
     private let maxTokens: Int64
     private let dayCount: Int
 
-    init(dailyTotals: [DailyTotal], fromDate: String, toDate: String, mode: ThemeMode) {
+    init(dailyTotals: [DailyTotal], mode: ThemeMode) {
         self.dailyTotals = dailyTotals
-        self.fromDate = fromDate
-        self.toDate = toDate
         self.mode = mode
 
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
         let cal = Calendar.current
+        let now = Date()
 
-        guard let from = fmt.date(from: fromDate),
-              let to = fmt.date(from: toDate) else {
+        // Current month: 1st … today.
+        let comps = cal.dateComponents([.year, .month], from: now)
+        guard let from = cal.date(from: comps) else {
             cells = []; maxTokens = 0; dayCount = 0
             return
         }
+        let to = now
 
         var lookup: [String: Int64] = [:]
         for d in dailyTotals { lookup[d.date] = d.tokens }
