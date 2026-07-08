@@ -89,9 +89,6 @@ struct DashboardView: View {
             emptyState
         } else {
             VStack(alignment: .leading, spacing: 13) {
-                if vm.cards.count > 1 {
-                    DistributionChart(cards: vm.cards)
-                }
                 ForEach(vm.cards) { card in
                     GroupCardView(card: card, subTitle: vm.groupBy.subTitle)
                 }
