@@ -7,23 +7,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-14
-            os: macos
-            arch: arm64
-            target: aarch64-apple-darwin
-          - runner: macos-13
-            os: macos
-            arch: x86_64
-            target: x86_64-apple-darwin
-          - runner: ubuntu-latest
-            os: linux
-            arch: x86_64
-            target: x86_64-unknown-linux-gnu
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -33,40 +17,32 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - name: Build Rust server
-        if: matrix.os == 'macos' || matrix.os == 'linux'
         run: |
-          cargo build --release --target ${{ matrix.target }} --manifest-path token9-server/Cargo.toml
-          mkdir -p dist/token9-${{ matrix.os }}-${{ matrix.arch }}/bin
-          cp token9-server/target/${{ matrix.target }}/release/token9 dist/token9-${{ matrix.os }}-${{ matrix.arch }}/bin/
-          strip dist/token9-${{ matrix.os }}-${{ matrix.arch }}/bin/token9
-
-      - name: Install Swift toolchain
-        if: matrix.os == 'macos'
-        run: |
-          sudo xcode-select -s /Applications/Xcode_${{ matrix.arch == 'arm64' && '15' || '14' }}.app/Contents/Developer 2>/dev/null || true
+          cargo build --release --target aarch64-apple-darwin --manifest-path token9-server/Cargo.toml
+          mkdir -p dist/token9-macos-arm64/bin
+          # workspace shares target/ at repo root
+          cp target/aarch64-apple-darwin/release/token9 dist/token9-macos-arm64/bin/
+          strip dist/token9-macos-arm64/bin/token9
 
       - name: Generate Swift types
-        if: matrix.os == 'macos'
         run: |
           cargo install typeshare-cli
           ./scripts/gen-types.sh
 
       - name: Build Swift app
-        if: matrix.os == 'macos'
         working-directory: token9-apps/macos
         run: |
           swift build -c release
           BIN=$(swift build -c release --show-bin-path)
-          mkdir -p ../../dist/token9-${{ matrix.os }}-${{ matrix.arch }}/Token9.app/Contents/MacOS
-          cp "$BIN/Token9" ../../dist/token9-${{ matrix.os }}-${{ matrix.arch }}/Token9.app/Contents/MacOS/Token9
+          mkdir -p ../../dist/token9-macos-arm64/Token9.app/Contents/MacOS
+          cp "$BIN/Token9" ../../dist/token9-macos-arm64/Token9.app/Contents/MacOS/Token9
 
       - name: Assemble Info.plist
-        if: matrix.os == 'macos'
         run: |
-          cat > dist/token9-${{ matrix.os }}-${{ matrix.arch }}/Token9.app/Contents/Info.plist <<'PLIST'
+          cat > dist/token9-macos-arm64/Token9.app/Contents/Info.plist <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -86,13 +62,14 @@ jobs:
       - name: Package tarball
         run: |
           cd dist
-          tar -czf token9-v${VERSION}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz token9-${{ matrix.os }}-${{ matrix.arch }}
-          shasum -a 256 token9-v${VERSION}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz | tee -a $GITHUB_STEP_SUMMARY
+          tar -czf token9-v${VERSION}-macos-arm64.tar.gz token9-macos-arm64
+          shasum -a 256 token9-v${VERSION}-macos-arm64.tar.gz | tee $RUNNER_TEMP/sha256.txt
+          cat $RUNNER_TEMP/sha256.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: token9-${{ matrix.os }}-${{ matrix.arch }}
+          name: token9-macos-arm64
           path: dist/token9-v*.tar.gz
 
   release:
@@ -103,8 +80,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          name: token9-macos-arm64
           path: artifacts
-          merge-multiple: true
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
