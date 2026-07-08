@@ -10,7 +10,7 @@ struct GroupCardView: View {
         Card(tint: card.tint) {
             VStack(alignment: .leading, spacing: 12) {
                 header
-                Headline(value: Fmt.tokens(card.totalTokens), caption: "总量 tokens")
+                Headline(value: Fmt.tokens(card.totalTokens), caption: "tokens \(L10n.total)")
                 metricGrid
                 if !card.subs.isEmpty { subSection }
                 if !rateRows.isEmpty {
@@ -39,12 +39,12 @@ struct GroupCardView: View {
             columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
             alignment: .leading, spacing: 10
         ) {
-            MetricCell(icon: "arrow.down", label: "输入", value: Fmt.tokens(card.input), tint: card.tint)
-            MetricCell(icon: "arrow.up", label: "输出", value: Fmt.tokens(card.output), tint: card.tint)
-            MetricCell(icon: "bolt.fill", label: "缓存读", value: Fmt.tokens(card.cacheRead), tint: card.tint)
-            MetricCell(icon: "square.stack.3d.up.fill", label: "缓存写", value: Fmt.tokens(card.cacheWrite), tint: card.tint)
-            MetricCell(icon: "number", label: "请求", value: "\(card.requests)", tint: card.tint)
-            RingMetricCell(value: card.cacheRatioPct, label: "Cache Hit", tint: card.tint)
+            MetricCell(icon: "arrow.down", label: L10n.input, value: Fmt.tokens(card.input), tint: card.tint)
+            MetricCell(icon: "arrow.up", label: L10n.output, value: Fmt.tokens(card.output), tint: card.tint)
+            MetricCell(icon: "bolt.fill", label: L10n.cacheRead, value: Fmt.tokens(card.cacheRead), tint: card.tint)
+            MetricCell(icon: "square.stack.3d.up.fill", label: L10n.cacheWrite, value: Fmt.tokens(card.cacheWrite), tint: card.tint)
+            MetricCell(icon: "number", label: L10n.requests, value: "\(card.requests)", tint: card.tint)
+            RingMetricCell(value: card.cacheRatioPct, label: L10n.cacheHit, tint: card.tint)
         }
     }
 
@@ -100,10 +100,10 @@ struct GroupCardView: View {
         var rows: [RateRow] = []
         for rl in card.rateLimits {
             if let lim = rl.requests_limit, let rem = rl.requests_remaining, lim > 0 {
-                rows.append(RateRow(id: "\(rl.provider)-req", label: "\(rl.provider) 请求剩余", remaining: Int(rem), limit: Int(lim)))
+                rows.append(RateRow(id: "\(rl.provider)-req", label: "\(rl.provider) \(L10n.requests) \(L10n.remaining)", remaining: Int(rem), limit: Int(lim)))
             }
             if let lim = rl.tokens_limit, let rem = rl.tokens_remaining, lim > 0 {
-                rows.append(RateRow(id: "\(rl.provider)-tok", label: "\(rl.provider) tokens剩余", remaining: Int(rem), limit: Int(lim)))
+                rows.append(RateRow(id: "\(rl.provider)-tok", label: "\(rl.provider) tokens \(L10n.remaining)", remaining: Int(rem), limit: Int(lim)))
             }
         }
         return rows

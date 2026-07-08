@@ -13,8 +13,8 @@ struct DailyTotal: Identifiable {
 enum GroupBy: String, CaseIterable, Identifiable {
     case tool, model
     var id: String { rawValue }
-    var label: String { self == .tool ? "工具" : "模型" }
-    var subTitle: String { self == .tool ? "按模型" : "按工具" }
+    var label: String { self == .tool ? L10n.groupByTool : L10n.groupByModel }
+    var subTitle: String { self == .tool ? L10n.subByModel : L10n.subByTool }
 }
 
 /// A breakdown line inside a card (the other dimension).
