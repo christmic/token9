@@ -25,8 +25,6 @@ pub struct StatBucketDto {
     #[typeshare(serialized_as = "I54")]
     pub cache_write_tokens: i64,
     pub cache_ratio: f64,
-    /// Estimated cost in USD (from the price table; not actual billed amount).
-    pub cost: f64,
 }
 
 #[typeshare]

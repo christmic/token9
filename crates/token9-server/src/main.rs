@@ -4,7 +4,6 @@ mod config;
 mod error;
 mod hosts;
 mod metering;
-mod pricing;
 mod proxy;
 mod ratelimit;
 mod router;
@@ -23,7 +22,6 @@ use tracing_subscriber::EnvFilter;
 
 use crate::cli::{Cli, Command};
 use crate::config::Config;
-use crate::pricing::Pricing;
 use crate::routetable::RouteTable;
 use crate::store::sqlite::SqliteStore;
 
@@ -32,7 +30,6 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub store: Arc<SqliteStore>,
     pub routes: Arc<RwLock<RouteTable>>,
-    pub pricing: Arc<Pricing>,
     pub http: reqwest::Client,
 }
 
@@ -75,7 +72,6 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         config: Arc::new(config),
         store,
         routes: Arc::new(RwLock::new(routes)),
-        pricing: Arc::new(Pricing::load()),
         http,
     };
 

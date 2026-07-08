@@ -93,10 +93,8 @@ public struct StatBucketDto: Codable {
 	public let cache_read_tokens: Int64
 	public let cache_write_tokens: Int64
 	public let cache_ratio: Double
-	/// Estimated cost in USD (from the price table; not actual billed amount).
-	public let cost: Double
 
-	public init(provider: String, model: String, date: String, requests: Int64, input_tokens: Int64, output_tokens: Int64, cache_read_tokens: Int64, cache_write_tokens: Int64, cache_ratio: Double, cost: Double) {
+	public init(provider: String, model: String, date: String, requests: Int64, input_tokens: Int64, output_tokens: Int64, cache_read_tokens: Int64, cache_write_tokens: Int64, cache_ratio: Double) {
 		self.provider = provider
 		self.model = model
 		self.date = date
@@ -106,7 +104,6 @@ public struct StatBucketDto: Codable {
 		self.cache_read_tokens = cache_read_tokens
 		self.cache_write_tokens = cache_write_tokens
 		self.cache_ratio = cache_ratio
-		self.cost = cost
 	}
 }
 
