@@ -430,3 +430,20 @@ pub fn run_hosts(domain: &str, cmd: HostsCmd) -> anyhow::Result<()> {
         HostsCmd::Status => hosts::status(domain),
     }
 }
+
+/// Notify a running token9 server to reload its in-memory config from the DB.
+/// Best-effort: silently succeeds if the server is not running or unreachable.
+pub async fn try_reload_server(port: u16) {
+    let url = format!("http://127.0.0.1:{port}/admin/reload");
+    match reqwest::Client::new()
+        .post(&url)
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            eprintln!("reloaded running server at port {port}");
+        }
+        _ => {} // server not running — nothing to reload
+    }
+}

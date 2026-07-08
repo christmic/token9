@@ -51,34 +51,28 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         None | Some(Command::Serve) => serve(config, port_override).await,
-        Some(Command::Provider { action }) => {
+        Some(cmd) => {
             let store = SqliteStore::open(&config.db_path).await?;
-            cli::run_provider(&store, action).await
-        }
-        Some(Command::Model { action }) => {
-            let store = SqliteStore::open(&config.db_path).await?;
-            cli::run_model(&store, action).await
-        }
-        Some(Command::Tool { action }) => {
-            let store = SqliteStore::open(&config.db_path).await?;
-            cli::run_tool(&store, action).await
-        }
-        Some(Command::Route { action }) => {
-            let store = SqliteStore::open(&config.db_path).await?;
-            cli::run_route(&store, action).await
-        }
-        Some(Command::Settings { action }) => {
-            let store = SqliteStore::open(&config.db_path).await?;
-            cli::run_settings(&store, action).await
-        }
-        Some(Command::Endpoint) => {
-            let store = SqliteStore::open(&config.db_path).await?;
-            cli::run_endpoint(&store, &config).await
-        }
-        Some(Command::Hosts { action }) => {
-            let store = SqliteStore::open(&config.db_path).await?;
-            let domain = store.get_setting("domain").await?.unwrap_or(config.domain.clone());
-            cli::run_hosts(&domain, action)
+            let settings_port = store.get_setting("port").await?.and_then(|s| s.parse::<u16>().ok());
+            let effective_port = port_override.or(settings_port).unwrap_or(config.port);
+
+            let result = match cmd {
+                Command::Provider { action } => cli::run_provider(&store, action).await,
+                Command::Model { action } => cli::run_model(&store, action).await,
+                Command::Tool { action } => cli::run_tool(&store, action).await,
+                Command::Route { action } => cli::run_route(&store, action).await,
+                Command::Settings { action } => cli::run_settings(&store, action).await,
+                Command::Endpoint => cli::run_endpoint(&store, &config).await,
+                Command::Hosts { action } => {
+                    let domain = store.get_setting("domain").await?.unwrap_or(config.domain.clone());
+                    cli::run_hosts(&domain, action)
+                }
+                Command::Serve => unreachable!(),
+            };
+            result?;
+
+            cli::try_reload_server(effective_port).await;
+            Ok(())
         }
     }
 }
