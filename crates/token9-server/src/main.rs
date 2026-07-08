@@ -6,8 +6,8 @@ mod hosts;
 mod metering;
 mod proxy;
 mod ratelimit;
-mod router;
 mod routetable;
+mod select;
 mod stats;
 mod store;
 mod tool;
@@ -24,6 +24,7 @@ use tracing_subscriber::EnvFilter;
 use crate::cli::{Cli, Command};
 use crate::config::Config;
 use crate::routetable::RouteTable;
+use crate::select::LbState;
 use crate::store::sqlite::SqliteStore;
 use crate::tool::ToolRule;
 
@@ -33,6 +34,7 @@ pub struct AppState {
     pub store: Arc<SqliteStore>,
     pub routes: Arc<RwLock<RouteTable>>,
     pub tools: Arc<RwLock<Vec<ToolRule>>>,
+    pub lb: Arc<LbState>,
     pub http: reqwest::Client,
 }
 
@@ -59,6 +61,10 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Tool { action }) => {
             let store = SqliteStore::open(&config.db_path).await?;
             cli::run_tool(&store, action).await
+        }
+        Some(Command::Route { action }) => {
+            let store = SqliteStore::open(&config.db_path).await?;
+            cli::run_route(&store, action).await
         }
         Some(Command::Settings { action }) => {
             let store = SqliteStore::open(&config.db_path).await?;
@@ -100,6 +106,7 @@ async fn serve(config: Config, port_override: Option<u16>) -> anyhow::Result<()>
         store,
         routes: Arc::new(RwLock::new(routes)),
         tools: Arc::new(RwLock::new(tools)),
+        lb: Arc::new(LbState::default()),
         http,
     };
 
@@ -114,6 +121,10 @@ async fn serve(config: Config, port_override: Option<u16>) -> anyhow::Result<()>
         .route("/admin/models/{model_id}", delete(admin::delete_model))
         .route("/admin/tools", get(admin::list_tools).post(admin::create_tool))
         .route("/admin/tools/{id}", delete(admin::delete_tool))
+        .route("/admin/routes", get(admin::list_routes).post(admin::create_route))
+        .route("/admin/routes/{id}", delete(admin::delete_route))
+        .route("/admin/keys", get(admin::list_keys).post(admin::create_key))
+        .route("/admin/keys/{id}", delete(admin::delete_key))
         .route("/admin/reload", post(admin::reload_routes))
         .fallback(proxy::proxy)
         .with_state(state);

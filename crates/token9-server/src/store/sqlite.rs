@@ -75,6 +75,26 @@ CREATE TABLE IF NOT EXISTS settings (
   value      TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS provider_keys (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+  api_key     TEXT NOT NULL,
+  label       TEXT,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS routes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  model_id   TEXT NOT NULL REFERENCES logical_models(model_id) ON DELETE CASCADE,
+  provider   TEXT NOT NULL,
+  real_model TEXT NOT NULL,
+  weight     INTEGER NOT NULL DEFAULT 1,
+  priority   INTEGER NOT NULL DEFAULT 100,
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
 "#;
 
 #[derive(Clone)]
@@ -111,7 +131,53 @@ impl SqliteStore {
         let _ = sqlx::query("ALTER TABLE requests ADD COLUMN tool_raw TEXT")
             .execute(&pool)
             .await;
-        Ok(Self { pool })
+        let _ = sqlx::query("ALTER TABLE requests ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE requests ADD COLUMN route_reason TEXT")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE requests ADD COLUMN route_trail TEXT")
+            .execute(&pool)
+            .await;
+
+        let store = Self { pool };
+        store.migrate_routing().await?;
+        Ok(store)
+    }
+
+    /// One-time idempotent migration to the multi-target routing model:
+    /// seed provider_keys from the legacy providers.api_key, and routes from
+    /// legacy logical_models (provider_id + real_model).
+    async fn migrate_routing(&self) -> anyhow::Result<()> {
+        let pk: i64 = sqlx::query("SELECT COUNT(*) AS c FROM provider_keys")
+            .fetch_one(&self.pool)
+            .await?
+            .get("c");
+        if pk == 0 {
+            sqlx::query(
+                r#"INSERT INTO provider_keys (provider_id, api_key, label, enabled, created_at)
+                   SELECT id, api_key, 'default', 1, CAST(strftime('%s','now') AS INTEGER)*1000
+                   FROM providers WHERE api_key IS NOT NULL AND api_key <> ''"#,
+            )
+            .execute(&self.pool)
+            .await?;
+        }
+        let r: i64 = sqlx::query("SELECT COUNT(*) AS c FROM routes")
+            .fetch_one(&self.pool)
+            .await?
+            .get("c");
+        if r == 0 {
+            sqlx::query(
+                r#"INSERT INTO routes (model_id, provider, real_model, weight, priority, enabled, created_at)
+                   SELECT m.model_id, p.name, m.real_model, 1, 100, 1,
+                          CAST(strftime('%s','now') AS INTEGER)*1000
+                   FROM logical_models m JOIN providers p ON p.id = m.provider_id"#,
+            )
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
     }
 
     pub async fn record(&self, row: RequestRow) -> anyhow::Result<()> {
@@ -119,8 +185,8 @@ impl SqliteStore {
             r#"INSERT INTO requests
                (id, ts, client_protocol, model_id, provider, real_model, stream, status,
                 input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
-                latency_ms, ttft_ms, error, tool, tool_raw)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
+                latency_ms, ttft_ms, error, tool, tool_raw, attempts, route_reason, route_trail)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
         )
         .bind(row.id)
         .bind(row.ts)
@@ -139,6 +205,9 @@ impl SqliteStore {
         .bind(row.error)
         .bind(row.tool)
         .bind(row.tool_raw)
+        .bind(row.attempts)
+        .bind(row.route_reason)
+        .bind(row.route_trail)
         .execute(&self.pool)
         .await?;
         Ok(())

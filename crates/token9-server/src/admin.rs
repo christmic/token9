@@ -222,6 +222,125 @@ pub async fn delete_tool(
     Ok(Json(serde_json::json!({ "removed": removed })))
 }
 
+// ---- provider keys ----
+
+#[derive(Debug, Deserialize)]
+pub struct KeyInput {
+    pub provider: String,
+    pub api_key: String,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+pub async fn list_keys(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
+    let ks = state
+        .store
+        .list_provider_keys(None)
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let rows: Vec<_> = ks
+        .into_iter()
+        .map(|k| {
+            serde_json::json!({
+                "id": k.id, "provider": k.provider, "label": k.label,
+                "enabled": k.enabled, "api_key": mask(&k.api_key),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "keys": rows })))
+}
+
+pub async fn create_key(
+    State(state): State<AppState>,
+    Json(input): Json<KeyInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    state
+        .store
+        .add_provider_key(&input.provider, &input.api_key, input.label.as_deref())
+        .await
+        .map_err(|e| AppError::bad_request(e.to_string()))?;
+    reload(&state).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn delete_key(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let removed = state
+        .store
+        .remove_provider_key(id)
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    reload(&state).await?;
+    Ok(Json(serde_json::json!({ "removed": removed })))
+}
+
+// ---- routes (targets) ----
+
+#[derive(Debug, Deserialize)]
+pub struct RouteInput {
+    pub model_id: String,
+    pub provider: String,
+    pub real_model: String,
+    #[serde(default = "one")]
+    pub weight: i64,
+    #[serde(default = "hundred")]
+    pub priority: i64,
+}
+
+fn one() -> i64 {
+    1
+}
+fn hundred() -> i64 {
+    100
+}
+
+pub async fn list_routes(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
+    let rs = state
+        .store
+        .list_routes()
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let rows: Vec<_> = rs
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.id, "model_id": r.model_id, "provider": r.provider,
+                "real_model": r.real_model, "weight": r.weight,
+                "priority": r.priority, "enabled": r.enabled,
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "routes": rows })))
+}
+
+pub async fn create_route(
+    State(state): State<AppState>,
+    Json(input): Json<RouteInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    state
+        .store
+        .add_route(&input.model_id, &input.provider, &input.real_model, input.weight, input.priority)
+        .await
+        .map_err(|e| AppError::bad_request(e.to_string()))?;
+    reload(&state).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn delete_route(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let removed = state
+        .store
+        .remove_route(id)
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    reload(&state).await?;
+    Ok(Json(serde_json::json!({ "removed": removed })))
+}
+
 // ---- reload ----
 
 pub async fn reload_routes(

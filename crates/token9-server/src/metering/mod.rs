@@ -34,6 +34,9 @@ pub struct MeterMeta {
     pub status: i64,
     pub tool: String,
     pub tool_raw: Option<String>,
+    pub attempts: i64,
+    pub route_reason: Option<String>,
+    pub route_trail: Option<String>,
 }
 
 /// Consume cloned response bytes off the forwarding path, parse usage, persist.
@@ -71,6 +74,9 @@ pub async fn run(mut rx: UnboundedReceiver<Bytes>, meta: MeterMeta, store: Arc<S
         error: None,
         tool: meta.tool,
         tool_raw: meta.tool_raw,
+        attempts: meta.attempts,
+        route_reason: meta.route_reason,
+        route_trail: meta.route_trail,
     };
 
     if let Err(e) = store.record(row).await {

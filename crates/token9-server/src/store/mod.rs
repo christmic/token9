@@ -25,6 +25,12 @@ pub struct RequestRow {
     pub tool: String,
     /// Real tool identifier (raw User-Agent), for discovering unmapped tools.
     pub tool_raw: Option<String>,
+    /// Number of upstream attempts made (1 = no fallback).
+    pub attempts: i64,
+    /// Why the committed target was chosen: primary / load_balance / fallback.
+    pub route_reason: Option<String>,
+    /// JSON trail of every attempt and its outcome, for analysis.
+    pub route_trail: Option<String>,
 }
 
 /// A provider row as stored (api_key kept as-is; encryption is a future ConfigStore concern).
@@ -45,16 +51,46 @@ pub struct ModelRow {
     pub inject_usage: bool,
 }
 
-/// A fully-resolved route: logical model joined with its provider's connection details.
+/// One candidate backend for a logical model, with the provider's usable keys.
 #[derive(Debug, Clone)]
-pub struct ResolvedRoute {
-    pub model_id: String,
+pub struct TargetDef {
     pub provider: String,
     pub base_url: String,
     pub dialect: Dialect,
     pub real_model: String,
+    pub weight: i64,
+    pub priority: i64,
+    pub keys: Vec<String>,
+}
+
+/// A logical model's full routing set: ordered candidate targets.
+#[derive(Debug, Clone)]
+pub struct RouteSet {
+    pub model_id: String,
     pub inject_usage: bool,
+    pub targets: Vec<TargetDef>,
+}
+
+/// A provider_keys row (api_key masked by callers when displayed).
+#[derive(Debug, Clone)]
+pub struct ProviderKeyRow {
+    pub id: i64,
+    pub provider: String,
     pub api_key: Option<String>,
+    pub label: Option<String>,
+    pub enabled: bool,
+}
+
+/// A routes row.
+#[derive(Debug, Clone)]
+pub struct RouteRow {
+    pub id: i64,
+    pub model_id: String,
+    pub provider: String,
+    pub real_model: String,
+    pub weight: i64,
+    pub priority: i64,
+    pub enabled: bool,
 }
 
 /// One aggregated stats bucket (provider + model + day).

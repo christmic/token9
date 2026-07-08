@@ -1,10 +1,14 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sqlx::Row;
 use tracing::warn;
 
-use super::{ModelRow, ObservedTool, ProviderRow, RateLimitRow, ResolvedRoute, ToolRuleRow};
+use super::{
+    ModelRow, ObservedTool, ProviderKeyRow, ProviderRow, RateLimitRow, RouteRow, RouteSet,
+    TargetDef, ToolRuleRow,
+};
 use crate::config::Dialect;
 use crate::ratelimit::RateLimitSnapshot;
 use crate::store::sqlite::SqliteStore;
@@ -48,7 +52,90 @@ impl SqliteStore {
         .bind(ts)
         .execute(&self.pool)
         .await?;
+        // Seed a key row so the provider is usable by the router (dedup by value).
+        if let Some(key) = api_key {
+            if !key.is_empty() {
+                self.add_provider_key(name, key, Some("default")).await?;
+            }
+        }
         Ok(())
+    }
+
+    // ---- provider keys ----
+
+    /// Add a key for a provider (skips if the same key value already exists).
+    pub async fn add_provider_key(
+        &self,
+        provider_name: &str,
+        api_key: &str,
+        label: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let provider_id: i64 = sqlx::query("SELECT id FROM providers WHERE name = ?")
+            .bind(provider_name)
+            .fetch_optional(&self.pool)
+            .await?
+            .map(|r| r.get::<i64, _>("id"))
+            .ok_or_else(|| anyhow::anyhow!("unknown provider `{provider_name}`"))?;
+
+        let exists: Option<i64> =
+            sqlx::query("SELECT id FROM provider_keys WHERE provider_id = ? AND api_key = ?")
+                .bind(provider_id)
+                .bind(api_key)
+                .fetch_optional(&self.pool)
+                .await?
+                .map(|r| r.get::<i64, _>("id"));
+        if exists.is_some() {
+            return Ok(());
+        }
+        sqlx::query(
+            "INSERT INTO provider_keys (provider_id, api_key, label, enabled, created_at) VALUES (?,?,?,1,?)",
+        )
+        .bind(provider_id)
+        .bind(api_key)
+        .bind(label)
+        .bind(now_ms())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_provider_keys(&self, provider: Option<&str>) -> anyhow::Result<Vec<ProviderKeyRow>> {
+        let rows = if let Some(p) = provider {
+            sqlx::query(
+                r#"SELECT pk.id, pr.name AS provider, pk.api_key, pk.label, pk.enabled
+                   FROM provider_keys pk JOIN providers pr ON pr.id = pk.provider_id
+                   WHERE pr.name = ? ORDER BY pk.id"#,
+            )
+            .bind(p)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query(
+                r#"SELECT pk.id, pr.name AS provider, pk.api_key, pk.label, pk.enabled
+                   FROM provider_keys pk JOIN providers pr ON pr.id = pk.provider_id
+                   ORDER BY pr.name, pk.id"#,
+            )
+            .fetch_all(&self.pool)
+            .await?
+        };
+        Ok(rows
+            .into_iter()
+            .map(|r| ProviderKeyRow {
+                id: r.get("id"),
+                provider: r.get("provider"),
+                api_key: r.get("api_key"),
+                label: r.get("label"),
+                enabled: r.get::<i64, _>("enabled") != 0,
+            })
+            .collect())
+    }
+
+    pub async fn remove_provider_key(&self, id: i64) -> anyhow::Result<u64> {
+        let res = sqlx::query("DELETE FROM provider_keys WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
     }
 
     pub async fn list_providers(&self) -> anyhow::Result<Vec<ProviderRow>> {
@@ -113,7 +200,74 @@ impl SqliteStore {
         .bind(ts)
         .execute(&self.pool)
         .await?;
+        // Back-compat: ensure a primary route for this model exists.
+        self.add_route(model_id, provider_name, real_model, 1, 100).await?;
         Ok(())
+    }
+
+    // ---- routes (targets) ----
+
+    /// Add a route (target) for a logical model (skips exact duplicates).
+    pub async fn add_route(
+        &self,
+        model_id: &str,
+        provider: &str,
+        real_model: &str,
+        weight: i64,
+        priority: i64,
+    ) -> anyhow::Result<()> {
+        let dup: Option<i64> = sqlx::query(
+            "SELECT id FROM routes WHERE model_id=? AND provider=? AND real_model=?",
+        )
+        .bind(model_id)
+        .bind(provider)
+        .bind(real_model)
+        .fetch_optional(&self.pool)
+        .await?
+        .map(|r| r.get::<i64, _>("id"));
+        if dup.is_some() {
+            return Ok(());
+        }
+        sqlx::query(
+            "INSERT INTO routes (model_id, provider, real_model, weight, priority, enabled, created_at) VALUES (?,?,?,?,?,1,?)",
+        )
+        .bind(model_id)
+        .bind(provider)
+        .bind(real_model)
+        .bind(weight)
+        .bind(priority)
+        .bind(now_ms())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_routes(&self) -> anyhow::Result<Vec<RouteRow>> {
+        let rows = sqlx::query(
+            "SELECT id, model_id, provider, real_model, weight, priority, enabled FROM routes ORDER BY model_id, priority, id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| RouteRow {
+                id: r.get("id"),
+                model_id: r.get("model_id"),
+                provider: r.get("provider"),
+                real_model: r.get("real_model"),
+                weight: r.get("weight"),
+                priority: r.get("priority"),
+                enabled: r.get::<i64, _>("enabled") != 0,
+            })
+            .collect())
+    }
+
+    pub async fn remove_route(&self, id: i64) -> anyhow::Result<u64> {
+        let res = sqlx::query("DELETE FROM routes WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
     }
 
     pub async fn list_models(&self) -> anyhow::Result<Vec<ModelRow>> {
@@ -146,39 +300,73 @@ impl SqliteStore {
 
     // ---- routing ----
 
-    /// Load all routes (logical model joined with provider connection details).
-    /// Rows with an unparseable dialect are skipped with a warning.
-    pub async fn load_routes(&self) -> anyhow::Result<Vec<ResolvedRoute>> {
+    /// Build the routing sets: per logical model, its ordered enabled targets,
+    /// each target carrying its provider's enabled keys.
+    pub async fn load_routes(&self) -> anyhow::Result<Vec<RouteSet>> {
+        // provider name -> enabled keys
+        let key_rows = sqlx::query(
+            r#"SELECT p.name AS provider, pk.api_key
+               FROM provider_keys pk JOIN providers p ON p.id = pk.provider_id
+               WHERE pk.enabled = 1 ORDER BY pk.id"#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let mut keys: HashMap<String, Vec<String>> = HashMap::new();
+        for r in key_rows {
+            keys.entry(r.get("provider")).or_default().push(r.get("api_key"));
+        }
+
+        // inject_usage per model
+        let model_rows = sqlx::query("SELECT model_id, inject_usage FROM logical_models")
+            .fetch_all(&self.pool)
+            .await?;
+        let mut inject: HashMap<String, bool> = HashMap::new();
+        for r in model_rows {
+            inject.insert(r.get("model_id"), r.get::<i64, _>("inject_usage") != 0);
+        }
+
+        // enabled routes joined with provider connection details
         let rows = sqlx::query(
-            r#"SELECT m.model_id, p.name AS provider, p.base_url, p.dialect,
-                      m.real_model, m.inject_usage, p.api_key
-               FROM logical_models m
-               JOIN providers p ON p.id = m.provider_id"#,
+            r#"SELECT r.model_id, r.provider, r.real_model, r.weight, r.priority,
+                      p.base_url, p.dialect
+               FROM routes r JOIN providers p ON p.name = r.provider
+               WHERE r.enabled = 1
+               ORDER BY r.model_id, r.priority, r.id"#,
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let mut out = Vec::with_capacity(rows.len());
+        let mut sets: HashMap<String, RouteSet> = HashMap::new();
         for r in rows {
+            let model_id: String = r.get("model_id");
             let dialect_str: String = r.get("dialect");
             let dialect = match Dialect::from_str(&dialect_str) {
                 Ok(d) => d,
                 Err(e) => {
-                    warn!(model = %r.get::<String, _>("model_id"), error = %e, "skipping route with bad dialect");
+                    warn!(model = %model_id, error = %e, "skipping route with bad dialect");
                     continue;
                 }
             };
-            out.push(ResolvedRoute {
-                model_id: r.get("model_id"),
-                provider: r.get("provider"),
+            let provider: String = r.get("provider");
+            let target = TargetDef {
+                keys: keys.get(&provider).cloned().unwrap_or_default(),
+                provider,
                 base_url: r.get("base_url"),
                 dialect,
                 real_model: r.get("real_model"),
-                inject_usage: r.get::<i64, _>("inject_usage") != 0,
-                api_key: r.get("api_key"),
-            });
+                weight: r.get("weight"),
+                priority: r.get("priority"),
+            };
+            sets.entry(model_id.clone())
+                .or_insert_with(|| RouteSet {
+                    model_id: model_id.clone(),
+                    inject_usage: inject.get(&model_id).copied().unwrap_or(false),
+                    targets: Vec::new(),
+                })
+                .targets
+                .push(target);
         }
-        Ok(out)
+        Ok(sets.into_values().collect())
     }
 
     // ---- rate limits ----
@@ -410,14 +598,34 @@ mod tests {
         let ms = s.list_models().await.unwrap();
         assert_eq!(ms.len(), 2);
 
-        let routes = s.load_routes().await.unwrap();
-        assert_eq!(routes.len(), 2);
-        let coder = routes.iter().find(|r| r.model_id == "my-cheap-coder").unwrap();
-        assert_eq!(coder.provider, "deepseek");
-        assert_eq!(coder.real_model, "deepseek-chat");
+        let sets = s.load_routes().await.unwrap();
+        assert_eq!(sets.len(), 2);
+        let coder = sets.iter().find(|r| r.model_id == "my-cheap-coder").unwrap();
         assert!(coder.inject_usage);
-        assert_eq!(coder.api_key.as_deref(), Some("sk-2"));
-        assert_eq!(coder.dialect, Dialect::OpenaiChat);
+        assert_eq!(coder.targets.len(), 1);
+        let t = &coder.targets[0];
+        assert_eq!(t.provider, "deepseek");
+        assert_eq!(t.real_model, "deepseek-chat");
+        assert_eq!(t.dialect, Dialect::OpenaiChat);
+        assert_eq!(t.keys, vec!["sk-2".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn multi_key_and_multi_target() {
+        let s = store().await;
+        s.add_provider("a", "https://a", Dialect::Anthropic, Some("k1")).await.unwrap();
+        s.add_provider_key("a", "k2", Some("second")).await.unwrap();
+        s.add_provider("b", "https://b", Dialect::OpenaiChat, Some("kb")).await.unwrap();
+        s.add_model("m", "a", "real-a", false).await.unwrap(); // primary route
+        s.add_route("m", "b", "real-b", 1, 200).await.unwrap(); // fallback tier
+
+        let sets = s.load_routes().await.unwrap();
+        let m = sets.iter().find(|r| r.model_id == "m").unwrap();
+        assert_eq!(m.targets.len(), 2);
+        // priority order: a (100) before b (200)
+        assert_eq!(m.targets[0].provider, "a");
+        assert_eq!(m.targets[0].keys.len(), 2); // k1 + k2
+        assert_eq!(m.targets[1].provider, "b");
     }
 
     #[tokio::test]

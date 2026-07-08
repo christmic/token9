@@ -34,6 +34,11 @@ pub enum Command {
         #[command(subcommand)]
         action: ModelCmd,
     },
+    /// Manage routes (targets) for a logical model
+    Route {
+        #[command(subcommand)]
+        action: RouteCmd,
+    },
     /// Manage tool-identification rules
     Tool {
         #[command(subcommand)]
@@ -83,6 +88,58 @@ pub enum ProviderCmd {
     Rm {
         #[arg(long)]
         name: String,
+    },
+    /// Manage a provider's API keys (multi-key)
+    Key {
+        #[command(subcommand)]
+        action: KeyCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum KeyCmd {
+    /// Add a key to a provider (api-key via stdin when `-`/omitted)
+    Add {
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        api_key: Option<String>,
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// List keys (masked)
+    List {
+        #[arg(long)]
+        provider: Option<String>,
+    },
+    /// Remove a key by id
+    Rm {
+        #[arg(long)]
+        id: i64,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RouteCmd {
+    /// Add a target for a logical model (lower priority tried first)
+    Add {
+        #[arg(long)]
+        model_id: String,
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        real_model: String,
+        #[arg(long, default_value_t = 1)]
+        weight: i64,
+        #[arg(long, default_value_t = 100)]
+        priority: i64,
+    },
+    /// List routes
+    List,
+    /// Remove a route by id
+    Rm {
+        #[arg(long)]
+        id: i64,
     },
 }
 
@@ -192,6 +249,7 @@ pub async fn run_provider(store: &SqliteStore, cmd: ProviderCmd) -> anyhow::Resu
             let n = store.remove_provider(&name).await?;
             println!("removed {n} provider(s)");
         }
+        ProviderCmd::Key { action } => run_key(store, action).await?,
     }
     Ok(())
 }
@@ -224,6 +282,67 @@ pub async fn run_model(store: &SqliteStore, cmd: ModelCmd) -> anyhow::Result<()>
         ModelCmd::Rm { model_id } => {
             let n = store.remove_model(&model_id).await?;
             println!("removed {n} model(s)");
+        }
+    }
+    Ok(())
+}
+
+pub async fn run_key(store: &SqliteStore, cmd: KeyCmd) -> anyhow::Result<()> {
+    match cmd {
+        KeyCmd::Add { provider, api_key, label } => {
+            let key = match api_key.as_deref() {
+                Some("-") | None => read_secret_from_stdin("API key: ")?,
+                Some(k) => Some(k.to_string()),
+            };
+            let key = key.ok_or_else(|| anyhow::anyhow!("empty api key"))?;
+            store.add_provider_key(&provider, &key, label.as_deref()).await?;
+            println!("key added to `{provider}`");
+        }
+        KeyCmd::List { provider } => {
+            let ks = store.list_provider_keys(provider.as_deref()).await?;
+            if ks.is_empty() {
+                println!("(no keys)");
+            }
+            for k in ks {
+                let masked = match &k.api_key {
+                    Some(v) if v.len() > 4 => format!("****{}", &v[v.len() - 4..]),
+                    Some(_) => "****".into(),
+                    None => "-".into(),
+                };
+                let en = if k.enabled { "on" } else { "off" };
+                println!("#{:<4} {:<12} {:<10} {} [{}]", k.id, k.provider, en, masked, k.label.unwrap_or_default());
+            }
+        }
+        KeyCmd::Rm { id } => {
+            let n = store.remove_provider_key(id).await?;
+            println!("removed {n} key(s)");
+        }
+    }
+    Ok(())
+}
+
+pub async fn run_route(store: &SqliteStore, cmd: RouteCmd) -> anyhow::Result<()> {
+    match cmd {
+        RouteCmd::Add { model_id, provider, real_model, weight, priority } => {
+            store.add_route(&model_id, &provider, &real_model, weight, priority).await?;
+            println!("route: {model_id} -> {provider}/{real_model} (w{weight} p{priority})");
+        }
+        RouteCmd::List => {
+            let rs = store.list_routes().await?;
+            if rs.is_empty() {
+                println!("(no routes)");
+            }
+            for r in rs {
+                let en = if r.enabled { "on" } else { "off" };
+                println!(
+                    "#{:<4} {:<20} -> {:<12} {:<20} w{} p{} [{}]",
+                    r.id, r.model_id, r.provider, r.real_model, r.weight, r.priority, en
+                );
+            }
+        }
+        RouteCmd::Rm { id } => {
+            let n = store.remove_route(id).await?;
+            println!("removed {n} route(s)");
         }
     }
     Ok(())
