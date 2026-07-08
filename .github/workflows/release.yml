@@ -31,7 +31,9 @@ jobs:
         run: brew install typeshare
 
       - name: Generate Swift types
-        run: ./scripts/gen-types.sh
+        run: |
+          chmod +x ./scripts/gen-types.sh
+          ./scripts/gen-types.sh
 
       - name: Build Swift app
         working-directory: token9-apps/macos
