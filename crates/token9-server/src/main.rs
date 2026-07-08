@@ -15,6 +15,7 @@ mod tool;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post};
 use clap::Parser;
 use tokio::sync::RwLock;
@@ -127,6 +128,9 @@ async fn serve(config: Config, port_override: Option<u16>) -> anyhow::Result<()>
         .route("/admin/keys/{id}", delete(admin::delete_key))
         .route("/admin/reload", post(admin::reload_routes))
         .fallback(proxy::proxy)
+        // No body size limit — token9 is a local trusted proxy; the upstream
+        // provider enforces its own request size limits.
+        .layer(DefaultBodyLimit::disable())
         .with_state(state);
 
     let addr = format!("{bind}:{port}");
