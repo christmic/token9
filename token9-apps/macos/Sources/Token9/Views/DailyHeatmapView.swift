@@ -6,13 +6,12 @@ struct DailyHeatmapView: View {
     let toDate: String
     let mode: ThemeMode
 
-    private let spacing: CGFloat = 3
-    private let cell: CGFloat = 14
-    private let cols = 7
-    private let headers = ["日", "一", "二", "三", "四", "五", "六"]
+    private let spacing: CGFloat = 2
+    private let dayHeaders = ["日", "一", "二", "三", "四", "五", "六"]
 
-    private let rows: [[HeatCell]]
+    private let cells: [HeatCell]
     private let maxTokens: Int64
+    private let dayCount: Int
 
     init(dailyTotals: [DailyTotal], fromDate: String, toDate: String, mode: ThemeMode) {
         self.dailyTotals = dailyTotals
@@ -22,49 +21,36 @@ struct DailyHeatmapView: View {
 
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
         let cal = Calendar.current
-        var sunFirst = cal; sunFirst.firstWeekday = 1
 
         guard let from = fmt.date(from: fromDate),
               let to = fmt.date(from: toDate) else {
-            rows = []; maxTokens = 0
+            cells = []; maxTokens = 0; dayCount = 0
             return
         }
-
-        // Pad to full weeks around the range, min 4 weeks (28 days).
-        let fromSunday = sunFirst.date(from: sunFirst.dateComponents([.yearForWeekOfYear, .weekOfYear], from: from))!
-        var toSaturday = sunFirst.date(byAdding: .day, value: 6,
-                                       to: sunFirst.date(from: sunFirst.dateComponents([.yearForWeekOfYear, .weekOfYear], from: to))!)!
-        let minSat = sunFirst.date(byAdding: .day, value: 27, to: fromSunday)!
-        if toSaturday < minSat { toSaturday = minSat }
 
         var lookup: [String: Int64] = [:]
         for d in dailyTotals { lookup[d.date] = d.tokens }
 
-        var maxT: Int64 = 0
         var flat: [HeatCell] = []
-        var cursor = fromSunday
-        while cursor <= toSaturday {
+        var maxT: Int64 = 0
+        var cursor = from
+        while cursor <= to {
             let key = fmt.string(from: cursor)
             let tokens = lookup[key] ?? 0
-            let inRange = cursor >= from && cursor <= to
-            let wd = sunFirst.component(.weekday, from: cursor) - 1
-            flat.append(HeatCell(date: key, tokens: tokens, inRange: inRange, weekday: wd))
-            if inRange, tokens > maxT { maxT = tokens }
-            cursor = sunFirst.date(byAdding: .day, value: 1, to: cursor)!
+            let wd = cal.component(.weekday, from: cursor) - 1 // 0=Sun
+            flat.append(HeatCell(date: key, tokens: tokens, weekday: wd))
+            if tokens > maxT { maxT = tokens }
+            cursor = cal.date(byAdding: .day, value: 1, to: cursor)!
         }
+        cells = flat
         maxTokens = maxT
-
-        var r: [[HeatCell]] = []
-        for i in stride(from: 0, to: flat.count, by: cols) {
-            r.append(Array(flat[i..<min(i+cols, flat.count)]))
-        }
-        rows = r
+        dayCount = flat.count
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             headerBar
-            grid
+            cellStrip
         }
         .padding(10)
         .background(
@@ -87,51 +73,42 @@ struct DailyHeatmapView: View {
         }
     }
 
-    // MARK: - Grid
+    // MARK: - Cell strip (fills available width)
 
-    private var grid: some View {
-        let colHeaderW: CGFloat = 16
+    private var cellStrip: some View {
+        GeometryReader { geo in
+            let totalSpacing = spacing * CGFloat(max(dayCount - 1, 0))
+            let maxCell = CGFloat(18)
+            let calc = (geo.size.width - totalSpacing) / CGFloat(max(dayCount, 1))
+            let sz = min(maxCell, max(calc, 6))
 
-        return VStack(spacing: 0) {
-            // Column headers
-            HStack(spacing: 0) {
-                Spacer().frame(width: colHeaderW)
+            VStack(alignment: .leading, spacing: 2) {
+                // Day-of-week labels
                 HStack(spacing: spacing) {
-                    ForEach(0..<cols, id: \.self) { i in
-                        Text(headers[i])
-                            .font(.system(size: 8, design: .monospaced))
+                    ForEach(cells) { cell in
+                        Text(dayHeaders[cell.weekday])
+                            .font(.system(size: 7, design: .monospaced))
                             .foregroundStyle(Theme.tTertiary)
-                            .frame(width: cell)
+                            .frame(width: sz)
                     }
                 }
-                Spacer(minLength: 0)
-            }
-
-            // Rows with week-number labels
-            ForEach(rows.indices, id: \.self) { ri in
-                HStack(spacing: 0) {
-                    Text("\(ri + 1)")
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundStyle(Theme.tTertiary)
-                        .frame(width: colHeaderW, alignment: .trailing)
-                    HStack(spacing: spacing) {
-                        ForEach(rows[ri]) { c in
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(c.inRange ? color(c.tokens) : Color.white.opacity(0.03))
-                                .frame(width: cell, height: cell)
-                        }
+                // Colored cells
+                HStack(spacing: spacing) {
+                    ForEach(cells) { cell in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(color(cell.tokens))
+                            .frame(width: sz, height: sz)
                     }
-                    Spacer(minLength: 0)
                 }
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(height: 32) // 2 rows of ~14px + spacing
     }
 
     // MARK: - Color
 
     private func color(_ tokens: Int64) -> Color {
-        guard tokens > 0, maxTokens > 0 else { return Color.white.opacity(0.05) }
+        guard tokens > 0, maxTokens > 0 else { return Color.white.opacity(0.06) }
         let a = Theme.accent(mode)
         let ratio = Double(tokens) / Double(maxTokens)
         switch ratio {
@@ -163,6 +140,5 @@ private struct HeatCell: Identifiable {
     let id = UUID()
     let date: String
     let tokens: Int64
-    let inRange: Bool
     let weekday: Int
 }
