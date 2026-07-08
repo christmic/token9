@@ -2,6 +2,7 @@ use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
+use token9_contracts::{StatBucketDto, StatsResponse};
 
 use crate::AppState;
 use crate::error::AppError;
@@ -19,35 +20,35 @@ pub struct StatsQuery {
 pub async fn summary(
     State(state): State<AppState>,
     Query(q): Query<StatsQuery>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<StatsResponse>, AppError> {
     let buckets = state
         .store
         .stats(q.from.as_deref(), q.to.as_deref())
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let rows: Vec<serde_json::Value> = buckets
+    let buckets = buckets
         .into_iter()
         .map(|b| {
             let denom = b.input_tokens + b.cache_read_tokens;
             let cache_ratio = if denom > 0 {
-                b.cache_read_tokens as f64 / denom as f64
+                (b.cache_read_tokens as f64 / denom as f64 * 10000.0).round() / 10000.0
             } else {
                 0.0
             };
-            serde_json::json!({
-                "provider": b.provider,
-                "model": b.real_model,
-                "date": b.date,
-                "requests": b.requests,
-                "input_tokens": b.input_tokens,
-                "output_tokens": b.output_tokens,
-                "cache_read_tokens": b.cache_read_tokens,
-                "cache_write_tokens": b.cache_write_tokens,
-                "cache_ratio": (cache_ratio * 10000.0).round() / 10000.0,
-            })
+            StatBucketDto {
+                provider: b.provider,
+                model: b.real_model,
+                date: b.date,
+                requests: b.requests,
+                input_tokens: b.input_tokens,
+                output_tokens: b.output_tokens,
+                cache_read_tokens: b.cache_read_tokens,
+                cache_write_tokens: b.cache_write_tokens,
+                cache_ratio,
+            }
         })
         .collect();
 
-    Ok(Json(serde_json::json!({ "buckets": rows })))
+    Ok(Json(StatsResponse { buckets }))
 }

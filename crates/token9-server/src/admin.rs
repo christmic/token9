@@ -4,6 +4,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
+use token9_contracts::{ModelDto, ModelsResponse, ProviderDto, ProvidersResponse};
 
 use crate::AppState;
 use crate::config::Dialect;
@@ -20,12 +21,12 @@ async fn reload(state: &AppState) -> Result<usize, AppError> {
     Ok(n)
 }
 
-/// Mask a secret for display: keep last 4 chars.
-fn mask(key: &Option<String>) -> serde_json::Value {
+/// Mask a secret for display: keep last 4 chars. `None` stays `None`.
+fn mask(key: &Option<String>) -> Option<String> {
     match key {
-        Some(k) if k.len() > 4 => serde_json::Value::String(format!("****{}", &k[k.len() - 4..])),
-        Some(_) => serde_json::Value::String("****".into()),
-        None => serde_json::Value::Null,
+        Some(k) if k.len() > 4 => Some(format!("****{}", &k[k.len() - 4..])),
+        Some(_) => Some("****".into()),
+        None => None,
     }
 }
 
@@ -42,24 +43,22 @@ pub struct ProviderInput {
 
 pub async fn list_providers(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<ProvidersResponse>, AppError> {
     let ps = state
         .store
         .list_providers()
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let rows: Vec<_> = ps
+    let providers = ps
         .into_iter()
-        .map(|p| {
-            serde_json::json!({
-                "name": p.name,
-                "base_url": p.base_url,
-                "dialect": p.dialect,
-                "api_key": mask(&p.api_key),
-            })
+        .map(|p| ProviderDto {
+            api_key: mask(&p.api_key),
+            name: p.name,
+            base_url: p.base_url,
+            dialect: p.dialect,
         })
         .collect();
-    Ok(Json(serde_json::json!({ "providers": rows })))
+    Ok(Json(ProvidersResponse { providers }))
 }
 
 pub async fn create_provider(
@@ -102,24 +101,22 @@ pub struct ModelInput {
 
 pub async fn list_models(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<ModelsResponse>, AppError> {
     let ms = state
         .store
         .list_models()
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let rows: Vec<_> = ms
+    let models = ms
         .into_iter()
-        .map(|m| {
-            serde_json::json!({
-                "model_id": m.model_id,
-                "provider": m.provider,
-                "real_model": m.real_model,
-                "inject_usage": m.inject_usage,
-            })
+        .map(|m| ModelDto {
+            model_id: m.model_id,
+            provider: m.provider,
+            real_model: m.real_model,
+            inject_usage: m.inject_usage,
         })
         .collect();
-    Ok(Json(serde_json::json!({ "models": rows })))
+    Ok(Json(ModelsResponse { models }))
 }
 
 pub async fn create_model(
