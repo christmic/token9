@@ -89,11 +89,11 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<RateLimitsRespon
         .map(|r| RateLimitDto {
             provider: r.provider,
             updated_at: r.updated_at,
-            requests_limit: r.requests_limit,
-            requests_remaining: r.requests_remaining,
+            requests_limit: r.requests_limit.map(|v| v as i32),
+            requests_remaining: r.requests_remaining.map(|v| v as i32),
             requests_reset: r.requests_reset,
-            tokens_limit: r.tokens_limit,
-            tokens_remaining: r.tokens_remaining,
+            tokens_limit: r.tokens_limit.map(|v| v as i32),
+            tokens_remaining: r.tokens_remaining.map(|v| v as i32),
             tokens_reset: r.tokens_reset,
         })
         .collect();

@@ -12,17 +12,23 @@ struct Token9Client {
     func stats(from: String? = nil, to: String? = nil) async throws -> StatsResponse {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("stats/summary"),
-            resolvingAgainstBaseURL: false
-        )!
+            resolvingAgainstBaseURL: false)!
         var items: [URLQueryItem] = []
         if let from { items.append(URLQueryItem(name: "from", value: from)) }
         if let to { items.append(URLQueryItem(name: "to", value: to)) }
         if !items.isEmpty { comps.queryItems = items }
+        return try await get(comps.url!)
+    }
 
-        let (data, resp) = try await URLSession.shared.data(from: comps.url!)
+    func rateLimits() async throws -> RateLimitsResponse {
+        try await get(baseURL.appendingPathComponent("ratelimits"))
+    }
+
+    private func get<T: Decodable>(_ url: URL) async throws -> T {
+        let (data, resp) = try await URLSession.shared.data(from: url)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
-        return try JSONDecoder().decode(StatsResponse.self, from: data)
+        return try JSONDecoder().decode(T.self, from: data)
     }
 }

@@ -77,14 +77,14 @@ public struct ProvidersResponse: Codable {
 public struct RateLimitDto: Codable {
 	public let provider: String
 	public let updated_at: Int64
-	public let requests_limit: Int64
-	public let requests_remaining: Int64
+	public let requests_limit: Int32?
+	public let requests_remaining: Int32?
 	public let requests_reset: String?
-	public let tokens_limit: Int64
-	public let tokens_remaining: Int64
+	public let tokens_limit: Int32?
+	public let tokens_remaining: Int32?
 	public let tokens_reset: String?
 
-	public init(provider: String, updated_at: Int64, requests_limit: Int64, requests_remaining: Int64, requests_reset: String?, tokens_limit: Int64, tokens_remaining: Int64, tokens_reset: String?) {
+	public init(provider: String, updated_at: Int64, requests_limit: Int32?, requests_remaining: Int32?, requests_reset: String?, tokens_limit: Int32?, tokens_remaining: Int32?, tokens_reset: String?) {
 		self.provider = provider
 		self.updated_at = updated_at
 		self.requests_limit = requests_limit

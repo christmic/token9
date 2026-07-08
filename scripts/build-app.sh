@@ -34,6 +34,8 @@ cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>LSUIElement</key>
+    <true/>
 </dict>
 </plist>
 PLIST

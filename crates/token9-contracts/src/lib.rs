@@ -75,15 +75,13 @@ pub struct RateLimitDto {
     pub provider: String,
     #[typeshare(serialized_as = "I54")]
     pub updated_at: i64,
-    #[typeshare(serialized_as = "I54")]
-    pub requests_limit: Option<i64>,
-    #[typeshare(serialized_as = "I54")]
-    pub requests_remaining: Option<i64>,
+    // Optional counts kept as i32 so typeshare preserves optionality
+    // (serialized_as would drop it); vendor rate-limit counts fit in i32.
+    pub requests_limit: Option<i32>,
+    pub requests_remaining: Option<i32>,
     pub requests_reset: Option<String>,
-    #[typeshare(serialized_as = "I54")]
-    pub tokens_limit: Option<i64>,
-    #[typeshare(serialized_as = "I54")]
-    pub tokens_remaining: Option<i64>,
+    pub tokens_limit: Option<i32>,
+    pub tokens_remaining: Option<i32>,
     pub tokens_reset: Option<String>,
 }
 
