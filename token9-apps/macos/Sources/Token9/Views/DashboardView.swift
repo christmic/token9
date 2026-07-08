@@ -12,13 +12,13 @@ struct DashboardView: View {
             VisualEffect().ignoresSafeArea()
             Theme.bg(mode).ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
                 topBar
                 SegmentedTabs(sel: $vm.range)
-                groupBar
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         heatmapSection
+                        groupBar
                         contentBody
                     }
                     .padding(.bottom, 6)
