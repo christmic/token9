@@ -19,13 +19,14 @@ struct DailyHeatmapView: View {
         let cal = Calendar.current
         let now = Date()
 
-        // Current month: 1st … today.
+        // Current month: 1st … last day of month.
         let comps = cal.dateComponents([.year, .month], from: now)
-        guard let from = cal.date(from: comps) else {
+        guard let from = cal.date(from: comps),
+              let range = cal.range(of: .day, in: .month, for: now) else {
             cells = []; maxTokens = 0; dayCount = 0
             return
         }
-        let to = now
+        let to = cal.date(byAdding: .day, value: range.count - 1, to: from)!
 
         var lookup: [String: Int64] = [:]
         for d in dailyTotals { lookup[d.date] = d.tokens }
