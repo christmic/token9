@@ -22,10 +22,21 @@ CREATE TABLE IF NOT EXISTS requests (
   cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
   latency_ms         INTEGER,
   ttft_ms            INTEGER,
-  error              TEXT
+  error              TEXT,
+  tool               TEXT NOT NULL DEFAULT 'OTHER',
+  tool_raw           TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_requests_ts ON requests(ts);
 CREATE INDEX IF NOT EXISTS idx_requests_provider ON requests(provider, real_model);
+
+CREATE TABLE IF NOT EXISTS tool_rules (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  label      TEXT NOT NULL,
+  header     TEXT NOT NULL,
+  pattern    TEXT NOT NULL,
+  priority   INTEGER NOT NULL DEFAULT 100,
+  created_at INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS providers (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,6 +97,14 @@ impl SqliteStore {
         }
         let pool = pool_opts.connect_with(opts).await?;
         sqlx::raw_sql(SCHEMA).execute(&pool).await?;
+        // Best-effort migrations for DBs created before these columns existed.
+        // Errors ("duplicate column name") are expected on already-migrated DBs.
+        let _ = sqlx::query("ALTER TABLE requests ADD COLUMN tool TEXT NOT NULL DEFAULT 'OTHER'")
+            .execute(&pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE requests ADD COLUMN tool_raw TEXT")
+            .execute(&pool)
+            .await;
         Ok(Self { pool })
     }
 
@@ -94,8 +113,8 @@ impl SqliteStore {
             r#"INSERT INTO requests
                (id, ts, client_protocol, model_id, provider, real_model, stream, status,
                 input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
-                latency_ms, ttft_ms, error)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
+                latency_ms, ttft_ms, error, tool, tool_raw)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
         )
         .bind(row.id)
         .bind(row.ts)
@@ -112,6 +131,8 @@ impl SqliteStore {
         .bind(row.latency_ms)
         .bind(row.ttft_ms)
         .bind(row.error)
+        .bind(row.tool)
+        .bind(row.tool_raw)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -124,7 +145,7 @@ impl SqliteStore {
         to: Option<&str>,
     ) -> anyhow::Result<Vec<StatBucket>> {
         let mut sql = String::from(
-            r#"SELECT provider, real_model,
+            r#"SELECT provider, real_model, tool,
                       strftime('%Y-%m-%d', ts/1000, 'unixepoch') AS date,
                       COUNT(*)                AS requests,
                       SUM(input_tokens)       AS input_tokens,
@@ -144,7 +165,9 @@ impl SqliteStore {
             sql.push_str(" WHERE ");
             sql.push_str(&conds.join(" AND "));
         }
-        sql.push_str(" GROUP BY provider, real_model, date ORDER BY date DESC, requests DESC");
+        sql.push_str(
+            " GROUP BY provider, real_model, tool, date ORDER BY date DESC, requests DESC",
+        );
 
         // SQL is assembled from static fragments only; all values are bind params.
         let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
@@ -161,6 +184,7 @@ impl SqliteStore {
             .map(|r| StatBucket {
                 provider: r.get("provider"),
                 real_model: r.get("real_model"),
+                tool: r.get("tool"),
                 date: r.get("date"),
                 requests: r.get("requests"),
                 input_tokens: r.get::<Option<i64>, _>("input_tokens").unwrap_or(0),

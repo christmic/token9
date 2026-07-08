@@ -34,6 +34,11 @@ pub enum Command {
         #[command(subcommand)]
         action: ModelCmd,
     },
+    /// Manage tool-identification rules
+    Tool {
+        #[command(subcommand)]
+        action: ToolCmd,
+    },
     /// Manage the /etc/hosts friendly-domain entry
     Hosts {
         #[command(subcommand)]
@@ -84,6 +89,33 @@ pub enum ModelCmd {
         #[arg(long)]
         model_id: String,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ToolCmd {
+    /// Add a tool-identification rule (header contains pattern -> label)
+    Add {
+        #[arg(long)]
+        label: String,
+        /// Header to inspect (default: user-agent)
+        #[arg(long, default_value = "user-agent")]
+        header: String,
+        /// Case-insensitive substring to match
+        #[arg(long)]
+        pattern: String,
+        /// Lower = checked first
+        #[arg(long, default_value_t = 100)]
+        priority: i64,
+    },
+    /// List tool rules
+    List,
+    /// Remove a tool rule by id
+    Rm {
+        #[arg(long)]
+        id: i64,
+    },
+    /// Show distinct real tool identifiers seen in traffic (discover unmapped)
+    Observed,
 }
 
 #[derive(Subcommand, Debug)]
@@ -175,6 +207,46 @@ pub async fn run_model(store: &SqliteStore, cmd: ModelCmd) -> anyhow::Result<()>
         ModelCmd::Rm { model_id } => {
             let n = store.remove_model(&model_id).await?;
             println!("removed {n} model(s)");
+        }
+    }
+    Ok(())
+}
+
+pub async fn run_tool(store: &SqliteStore, cmd: ToolCmd) -> anyhow::Result<()> {
+    match cmd {
+        ToolCmd::Add {
+            label,
+            header,
+            pattern,
+            priority,
+        } => {
+            let id = store.add_tool_rule(&label, &header, &pattern, priority).await?;
+            println!("tool rule #{id}: [{header} ~ \"{pattern}\"] -> {label}");
+        }
+        ToolCmd::List => {
+            let rs = store.list_tool_rules().await?;
+            if rs.is_empty() {
+                println!("(no tool rules)");
+            }
+            for r in rs {
+                println!(
+                    "#{:<4} p{:<4} {:<16} {} ~ \"{}\"",
+                    r.id, r.priority, r.label, r.header, r.pattern
+                );
+            }
+        }
+        ToolCmd::Rm { id } => {
+            let n = store.remove_tool_rule(id).await?;
+            println!("removed {n} tool rule(s)");
+        }
+        ToolCmd::Observed => {
+            let obs = store.observed_tools().await?;
+            if obs.is_empty() {
+                println!("(no traffic yet)");
+            }
+            for o in obs {
+                println!("{:<8} {:<6} {}", o.tool, o.requests, o.tool_raw);
+            }
         }
     }
     Ok(())

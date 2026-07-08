@@ -2,7 +2,9 @@ use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
-use token9_contracts::{StatBucketDto, StatsResponse};
+use token9_contracts::{
+    ObservedToolDto, ObservedToolsResponse, StatBucketDto, StatsResponse,
+};
 
 use crate::AppState;
 use crate::error::AppError;
@@ -39,6 +41,7 @@ pub async fn summary(
             StatBucketDto {
                 provider: b.provider,
                 model: b.real_model,
+                tool: b.tool,
                 date: b.date,
                 requests: b.requests,
                 input_tokens: b.input_tokens,
@@ -51,4 +54,26 @@ pub async fn summary(
         .collect();
 
     Ok(Json(StatsResponse { buckets }))
+}
+
+/// GET /tools/observed — distinct real tool identifiers seen in traffic with
+/// their logical mapping. Rows where `tool == "OTHER"` are unmapped tools you
+/// can add a rule for.
+pub async fn observed_tools(
+    State(state): State<AppState>,
+) -> Result<Json<ObservedToolsResponse>, AppError> {
+    let rows = state
+        .store
+        .observed_tools()
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let observed = rows
+        .into_iter()
+        .map(|o| ObservedToolDto {
+            tool_raw: o.tool_raw,
+            tool: o.tool,
+            requests: o.requests,
+        })
+        .collect();
+    Ok(Json(ObservedToolsResponse { observed }))
 }

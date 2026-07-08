@@ -39,6 +39,14 @@ pub async fn proxy(
         .unwrap_or(0);
     let id = uuid::Uuid::now_v7().to_string();
 
+    // Identify the calling tool: logical label (config-mapped, "OTHER" if none)
+    // + real identifier (raw UA) for discovering unmapped tools.
+    let tool = {
+        let rules = state.tools.read().await;
+        crate::tool::logical(&headers, &rules)
+    };
+    let tool_raw = crate::tool::raw(&headers);
+
     // Parse just enough to read the routing key. Reading != modifying (§1.5 #2).
     let json: serde_json::Value = serde_json::from_slice(&body)
         .map_err(|_| AppError::bad_request("request body is not valid JSON"))?;
@@ -107,7 +115,10 @@ pub async fn proxy(
     let resp = match req.send().await {
         Ok(r) => r,
         Err(e) => {
-            record_error(&state, &id, ts, start, &target, &model_id, stream, &e.to_string());
+            record_error(
+                &state, &id, ts, start, &target, &model_id, stream, &tool, &tool_raw,
+                &e.to_string(),
+            );
             return Err(AppError::bad_gateway(format!("upstream request failed: {e}")));
         }
     };
@@ -137,6 +148,8 @@ pub async fn proxy(
         real_model: target.real_model.clone(),
         stream,
         status: status.as_u16() as i64,
+        tool: tool.clone(),
+        tool_raw: Some(tool_raw.clone()),
     };
     tokio::spawn(metering::run(rx, meta, state.store.clone()));
 
@@ -173,6 +186,8 @@ fn record_error(
     target: &Target,
     model_id: &str,
     stream: bool,
+    tool: &str,
+    tool_raw: &str,
     err: &str,
 ) {
     let row = RequestRow {
@@ -191,6 +206,8 @@ fn record_error(
         latency_ms: Some(start.elapsed().as_millis() as i64),
         ttft_ms: None,
         error: Some(err.to_string()),
+        tool: tool.to_string(),
+        tool_raw: Some(tool_raw.to_string()),
     };
     let store = state.store.clone();
     tokio::spawn(async move {

@@ -26,6 +26,28 @@ public struct ModelsResponse: Codable {
 	}
 }
 
+/// A distinct real tool identifier seen in traffic + its current logical
+/// mapping — used to discover unmapped tools (tool == "OTHER").
+public struct ObservedToolDto: Codable {
+	public let tool_raw: String
+	public let tool: String
+	public let requests: Int64
+
+	public init(tool_raw: String, tool: String, requests: Int64) {
+		self.tool_raw = tool_raw
+		self.tool = tool
+		self.requests = requests
+	}
+}
+
+public struct ObservedToolsResponse: Codable {
+	public let observed: [ObservedToolDto]
+
+	public init(observed: [ObservedToolDto]) {
+		self.observed = observed
+	}
+}
+
 /// A provider. `api_key` is masked by the server before it reaches the wire.
 public struct ProviderDto: Codable {
 	public let name: String
@@ -86,6 +108,8 @@ public struct RateLimitsResponse: Codable {
 public struct StatBucketDto: Codable {
 	public let provider: String
 	public let model: String
+	/// Logical tool label (config-mapped; "OTHER" if unmatched).
+	public let tool: String
 	public let date: String
 	public let requests: Int64
 	public let input_tokens: Int64
@@ -94,9 +118,10 @@ public struct StatBucketDto: Codable {
 	public let cache_write_tokens: Int64
 	public let cache_ratio: Double
 
-	public init(provider: String, model: String, date: String, requests: Int64, input_tokens: Int64, output_tokens: Int64, cache_read_tokens: Int64, cache_write_tokens: Int64, cache_ratio: Double) {
+	public init(provider: String, model: String, tool: String, date: String, requests: Int64, input_tokens: Int64, output_tokens: Int64, cache_read_tokens: Int64, cache_write_tokens: Int64, cache_ratio: Double) {
 		self.provider = provider
 		self.model = model
+		self.tool = tool
 		self.date = date
 		self.requests = requests
 		self.input_tokens = input_tokens
@@ -112,5 +137,31 @@ public struct StatsResponse: Codable {
 
 	public init(buckets: [StatBucketDto]) {
 		self.buckets = buckets
+	}
+}
+
+/// A configurable tool-identification rule: if request header `header` contains
+/// `pattern` (case-insensitive), attribute the request to logical `label`.
+public struct ToolRuleDto: Codable {
+	public let id: Int64
+	public let label: String
+	public let header: String
+	public let pattern: String
+	public let priority: Int64
+
+	public init(id: Int64, label: String, header: String, pattern: String, priority: Int64) {
+		self.id = id
+		self.label = label
+		self.header = header
+		self.pattern = pattern
+		self.priority = priority
+	}
+}
+
+public struct ToolRulesResponse: Codable {
+	public let rules: [ToolRuleDto]
+
+	public init(rules: [ToolRuleDto]) {
+		self.rules = rules
 	}
 }

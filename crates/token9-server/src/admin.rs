@@ -4,20 +4,31 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
-use token9_contracts::{ModelDto, ModelsResponse, ProviderDto, ProvidersResponse};
+use token9_contracts::{
+    ModelDto, ModelsResponse, ProviderDto, ProvidersResponse, ToolRuleDto, ToolRulesResponse,
+};
 
 use crate::AppState;
 use crate::config::Dialect;
 use crate::error::AppError;
 use crate::routetable::RouteTable;
 
-/// Rebuild the in-memory route cache from the DB. Called after every mutation.
+/// Rebuild the in-memory route + tool-rule caches from the DB. Called after
+/// every mutation so a running server reflects changes immediately.
 async fn reload(state: &AppState) -> Result<usize, AppError> {
     let rt = RouteTable::load(&state.store)
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let n = rt.len();
     *state.routes.write().await = rt;
+
+    let rules = state
+        .store
+        .load_tool_rules()
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    *state.tools.write().await = rules;
+
     Ok(n)
 }
 
@@ -143,6 +154,72 @@ pub async fn delete_model(
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let routes = reload(&state).await?;
     Ok(Json(serde_json::json!({ "removed": removed, "routes": routes })))
+}
+
+// ---- tool rules ----
+
+#[derive(Debug, Deserialize)]
+pub struct ToolRuleInput {
+    pub label: String,
+    #[serde(default = "default_header")]
+    pub header: String,
+    pub pattern: String,
+    #[serde(default = "default_priority")]
+    pub priority: i64,
+}
+
+fn default_header() -> String {
+    "user-agent".to_string()
+}
+fn default_priority() -> i64 {
+    100
+}
+
+pub async fn list_tools(
+    State(state): State<AppState>,
+) -> Result<Json<ToolRulesResponse>, AppError> {
+    let rs = state
+        .store
+        .list_tool_rules()
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let rules = rs
+        .into_iter()
+        .map(|r| ToolRuleDto {
+            id: r.id,
+            label: r.label,
+            header: r.header,
+            pattern: r.pattern,
+            priority: r.priority,
+        })
+        .collect();
+    Ok(Json(ToolRulesResponse { rules }))
+}
+
+pub async fn create_tool(
+    State(state): State<AppState>,
+    Json(input): Json<ToolRuleInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let id = state
+        .store
+        .add_tool_rule(&input.label, &input.header, &input.pattern, input.priority)
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    reload(&state).await?;
+    Ok(Json(serde_json::json!({ "ok": true, "id": id })))
+}
+
+pub async fn delete_tool(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let removed = state
+        .store
+        .remove_tool_rule(id)
+        .await
+        .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    reload(&state).await?;
+    Ok(Json(serde_json::json!({ "removed": removed })))
 }
 
 // ---- reload ----

@@ -10,6 +10,7 @@ mod router;
 mod routetable;
 mod stats;
 mod store;
+mod tool;
 
 use std::sync::Arc;
 
@@ -24,12 +25,14 @@ use crate::cli::{Cli, Command};
 use crate::config::Config;
 use crate::routetable::RouteTable;
 use crate::store::sqlite::SqliteStore;
+use crate::tool::ToolRule;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
     pub store: Arc<SqliteStore>,
     pub routes: Arc<RwLock<RouteTable>>,
+    pub tools: Arc<RwLock<Vec<ToolRule>>>,
     pub http: reqwest::Client,
 }
 
@@ -55,14 +58,20 @@ async fn main() -> anyhow::Result<()> {
             let store = SqliteStore::open(&config.db_path).await?;
             cli::run_model(&store, action).await
         }
+        Some(Command::Tool { action }) => {
+            let store = SqliteStore::open(&config.db_path).await?;
+            cli::run_tool(&store, action).await
+        }
         Some(Command::Hosts { action }) => cli::run_hosts(&config.domain, action),
     }
 }
 
 async fn serve(config: Config) -> anyhow::Result<()> {
     let store = Arc::new(SqliteStore::open(&config.db_path).await?);
+    store.seed_default_tool_rules().await?;
     let routes = RouteTable::load(&store).await?;
-    info!(count = routes.len(), "loaded routes");
+    let tools = store.load_tool_rules().await?;
+    info!(routes = routes.len(), tool_rules = tools.len(), "loaded config");
     let http = reqwest::Client::builder().build()?;
 
     let bind = config.bind.clone();
@@ -72,6 +81,7 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         config: Arc::new(config),
         store,
         routes: Arc::new(RwLock::new(routes)),
+        tools: Arc::new(RwLock::new(tools)),
         http,
     };
 
@@ -79,10 +89,13 @@ async fn serve(config: Config) -> anyhow::Result<()> {
         .route("/healthz", get(|| async { "ok" }))
         .route("/stats/summary", get(stats::summary))
         .route("/ratelimits", get(ratelimit::list))
+        .route("/tools/observed", get(stats::observed_tools))
         .route("/admin/providers", get(admin::list_providers).post(admin::create_provider))
         .route("/admin/providers/{name}", delete(admin::delete_provider))
         .route("/admin/models", get(admin::list_models).post(admin::create_model))
         .route("/admin/models/{model_id}", delete(admin::delete_model))
+        .route("/admin/tools", get(admin::list_tools).post(admin::create_tool))
+        .route("/admin/tools/{id}", delete(admin::delete_tool))
         .route("/admin/reload", post(admin::reload_routes))
         .fallback(proxy::proxy)
         .with_state(state);

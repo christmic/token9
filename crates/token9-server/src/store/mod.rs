@@ -21,6 +21,10 @@ pub struct RequestRow {
     pub latency_ms: Option<i64>,
     pub ttft_ms: Option<i64>,
     pub error: Option<String>,
+    /// Logical tool label (config-mapped; "OTHER" if unmatched).
+    pub tool: String,
+    /// Real tool identifier (raw User-Agent), for discovering unmapped tools.
+    pub tool_raw: Option<String>,
 }
 
 /// A provider row as stored (api_key kept as-is; encryption is a future ConfigStore concern).
@@ -58,12 +62,32 @@ pub struct ResolvedRoute {
 pub struct StatBucket {
     pub provider: String,
     pub real_model: String,
+    pub tool: String,
     pub date: String,
     pub requests: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
     pub cache_read_tokens: i64,
     pub cache_write_tokens: i64,
+}
+
+/// A configurable tool-identification rule (persisted).
+#[derive(Debug, Clone)]
+pub struct ToolRuleRow {
+    pub id: i64,
+    pub label: String,
+    pub header: String,
+    pub pattern: String,
+    pub priority: i64,
+}
+
+/// A distinct real tool identifier observed in traffic, with its current
+/// logical mapping — used to discover unmapped tools (logical == "OTHER").
+#[derive(Debug, Clone)]
+pub struct ObservedTool {
+    pub tool_raw: String,
+    pub tool: String,
+    pub requests: i64,
 }
 
 /// Latest vendor rate-limit snapshot for a provider (captured from response headers).

@@ -4,10 +4,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sqlx::Row;
 use tracing::warn;
 
-use super::{ModelRow, ProviderRow, RateLimitRow, ResolvedRoute};
+use super::{ModelRow, ObservedTool, ProviderRow, RateLimitRow, ResolvedRoute, ToolRuleRow};
 use crate::config::Dialect;
 use crate::ratelimit::RateLimitSnapshot;
 use crate::store::sqlite::SqliteStore;
+use crate::tool::ToolRule;
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -215,6 +216,105 @@ impl SqliteStore {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    // ---- tool rules ----
+
+    /// Add a tool-identification rule. Returns the new rule id.
+    pub async fn add_tool_rule(
+        &self,
+        label: &str,
+        header: &str,
+        pattern: &str,
+        priority: i64,
+    ) -> anyhow::Result<i64> {
+        let res = sqlx::query(
+            r#"INSERT INTO tool_rules (label, header, pattern, priority, created_at)
+               VALUES (?,?,?,?,?)"#,
+        )
+        .bind(label)
+        .bind(header)
+        .bind(pattern)
+        .bind(priority)
+        .bind(now_ms())
+        .execute(&self.pool)
+        .await?;
+        Ok(res.last_insert_rowid())
+    }
+
+    pub async fn list_tool_rules(&self) -> anyhow::Result<Vec<ToolRuleRow>> {
+        let rows = sqlx::query(
+            "SELECT id, label, header, pattern, priority FROM tool_rules ORDER BY priority, id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| ToolRuleRow {
+                id: r.get("id"),
+                label: r.get("label"),
+                header: r.get("header"),
+                pattern: r.get("pattern"),
+                priority: r.get("priority"),
+            })
+            .collect())
+    }
+
+    pub async fn remove_tool_rule(&self, id: i64) -> anyhow::Result<u64> {
+        let res = sqlx::query("DELETE FROM tool_rules WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
+    }
+
+    /// Ordered rules for the in-memory identification cache.
+    pub async fn load_tool_rules(&self) -> anyhow::Result<Vec<ToolRule>> {
+        Ok(self
+            .list_tool_rules()
+            .await?
+            .into_iter()
+            .map(|r| ToolRule {
+                label: r.label,
+                header: r.header,
+                pattern: r.pattern,
+            })
+            .collect())
+    }
+
+    /// Seed default rules (claude-code, codex) if the table is empty.
+    pub async fn seed_default_tool_rules(&self) -> anyhow::Result<()> {
+        let count: i64 = sqlx::query("SELECT COUNT(*) AS c FROM tool_rules")
+            .fetch_one(&self.pool)
+            .await?
+            .get("c");
+        if count == 0 {
+            self.add_tool_rule("claude-code", "user-agent", "claude-cli", 10).await?;
+            self.add_tool_rule("codex", "originator", "codex", 10).await?;
+            self.add_tool_rule("codex", "user-agent", "codex", 20).await?;
+        }
+        Ok(())
+    }
+
+    /// Distinct real tool identifiers seen in traffic, with logical mapping and
+    /// count — surfaces unmapped tools (logical == "OTHER") for adding rules.
+    pub async fn observed_tools(&self) -> anyhow::Result<Vec<ObservedTool>> {
+        let rows = sqlx::query(
+            r#"SELECT COALESCE(tool_raw, 'OTHER') AS tool_raw, tool, COUNT(*) AS requests
+               FROM requests
+               GROUP BY tool_raw, tool
+               ORDER BY requests DESC"#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| ObservedTool {
+                tool_raw: r.get("tool_raw"),
+                tool: r.get("tool"),
+                requests: r.get("requests"),
+            })
+            .collect())
     }
 
     pub async fn list_rate_limits(&self) -> anyhow::Result<Vec<RateLimitRow>> {

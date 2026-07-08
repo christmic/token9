@@ -11,6 +11,8 @@ use typeshare::typeshare;
 pub struct StatBucketDto {
     pub provider: String,
     pub model: String,
+    /// Logical tool label (config-mapped; "OTHER" if unmatched).
+    pub tool: String,
     pub date: String,
     // i64 needs an explicit serialized_as for typeshare; I54 -> Swift Int64,
     // JS-safe (token counts never approach 2^54).
@@ -89,4 +91,41 @@ pub struct RateLimitDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RateLimitsResponse {
     pub rate_limits: Vec<RateLimitDto>,
+}
+
+/// A configurable tool-identification rule: if request header `header` contains
+/// `pattern` (case-insensitive), attribute the request to logical `label`.
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolRuleDto {
+    #[typeshare(serialized_as = "I54")]
+    pub id: i64,
+    pub label: String,
+    pub header: String,
+    pub pattern: String,
+    #[typeshare(serialized_as = "I54")]
+    pub priority: i64,
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolRulesResponse {
+    pub rules: Vec<ToolRuleDto>,
+}
+
+/// A distinct real tool identifier seen in traffic + its current logical
+/// mapping — used to discover unmapped tools (tool == "OTHER").
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObservedToolDto {
+    pub tool_raw: String,
+    pub tool: String,
+    #[typeshare(serialized_as = "I54")]
+    pub requests: i64,
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObservedToolsResponse {
+    pub observed: Vec<ObservedToolDto>,
 }
