@@ -39,11 +39,28 @@ pub enum Command {
         #[command(subcommand)]
         action: ToolCmd,
     },
+    /// Manage settings stored in the DB (domain, port, ...)
+    Settings {
+        #[command(subcommand)]
+        action: SettingsCmd,
+    },
+    /// Show the client endpoint URL + the sudo commands to make it port-less
+    Endpoint,
     /// Manage the /etc/hosts friendly-domain entry
     Hosts {
         #[command(subcommand)]
         action: HostsCmd,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SettingsCmd {
+    /// Set a setting (e.g. `settings set domain token9.test`, `settings set port 9527`)
+    Set { key: String, value: String },
+    /// Get a setting
+    Get { key: String },
+    /// List all settings
+    List,
 }
 
 #[derive(Subcommand, Debug)]
@@ -249,6 +266,42 @@ pub async fn run_tool(store: &SqliteStore, cmd: ToolCmd) -> anyhow::Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+pub async fn run_settings(store: &SqliteStore, cmd: SettingsCmd) -> anyhow::Result<()> {
+    match cmd {
+        SettingsCmd::Set { key, value } => {
+            store.set_setting(&key, &value).await?;
+            println!("{key} = {value} (restart `token9 serve` to apply)");
+        }
+        SettingsCmd::Get { key } => {
+            match store.get_setting(&key).await? {
+                Some(v) => println!("{v}"),
+                None => println!("(unset)"),
+            }
+        }
+        SettingsCmd::List => {
+            let s = store.list_settings().await?;
+            if s.is_empty() {
+                println!("(no settings; using bootstrap defaults)");
+            }
+            for (k, v) in s {
+                println!("{k:<12} {v}");
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn run_endpoint(store: &SqliteStore, config: &crate::config::Config) -> anyhow::Result<()> {
+    let domain = store.get_setting("domain").await?.unwrap_or(config.domain.clone());
+    let port = store
+        .get_setting("port")
+        .await?
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(config.port);
+    hosts::print_endpoint(&domain, port);
     Ok(())
 }
 

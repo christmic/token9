@@ -31,6 +31,36 @@ pub fn status(domain: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Print the client endpoint URL plus the (root) commands needed to make the
+/// port-less URL work: hosts entry (name -> loopback) + pf redirect (80 -> port).
+/// token9 never runs these itself — you review and run them with sudo.
+pub fn print_endpoint(domain: &str, port: u16) {
+    let content = fs::read_to_string(HOSTS_PATH).unwrap_or_default();
+    let hosts_ok = has_entry(&content, domain);
+
+    println!("domain : {domain}");
+    println!("port   : {port}");
+    println!();
+    println!("client base_url:");
+    println!("  with port (works now, no sudo): http://{domain}:{port}");
+    println!("  port-less (needs pf below)     : http://{domain}");
+    println!();
+    println!("to enable the port-less URL, run as root (one time):");
+    if hosts_ok {
+        println!("  # 1) hosts entry already present ✓");
+    } else {
+        println!("  # 1) name -> loopback");
+        println!("  echo '127.0.0.1  {domain}  # token9' | sudo tee -a {HOSTS_PATH}");
+    }
+    println!("  # 2) redirect :80 -> :{port} (does NOT occupy 80; kernel-level)");
+    println!(
+        "  echo 'rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port 80 -> 127.0.0.1 port {port}' | sudo pfctl -ef -"
+    );
+    println!();
+    println!("verify: curl http://{domain}/healthz");
+    println!("note: pf rule resets on reboot; re-run step 2 after reboot.");
+}
+
 pub fn install(domain: &str) -> anyhow::Result<()> {
     let content = fs::read_to_string(HOSTS_PATH).unwrap_or_default();
     if has_entry(&content, domain) {

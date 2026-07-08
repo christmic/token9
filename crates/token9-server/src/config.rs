@@ -75,7 +75,7 @@ fn default_bind() -> String {
     "127.0.0.1".to_string()
 }
 fn default_domain() -> String {
-    "token9.test".to_string()
+    "token9.oraculo.ai".to_string()
 }
 fn default_db() -> String {
     "~/.Oraculo/config/token9/token9.db".to_string()

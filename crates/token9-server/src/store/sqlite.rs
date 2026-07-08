@@ -69,6 +69,12 @@ CREATE TABLE IF NOT EXISTS provider_rate_limits (
   tokens_reset       TEXT,
   raw                TEXT
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 "#;
 
 #[derive(Clone)]

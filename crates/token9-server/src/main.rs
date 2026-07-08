@@ -43,13 +43,11 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let mut config = Config::load(&cli.config)?;
-    if let Some(port) = cli.port {
-        config.port = port;
-    }
+    let port_override = cli.port;
+    let config = Config::load(&cli.config)?;
 
     match cli.command {
-        None | Some(Command::Serve) => serve(config).await,
+        None | Some(Command::Serve) => serve(config, port_override).await,
         Some(Command::Provider { action }) => {
             let store = SqliteStore::open(&config.db_path).await?;
             cli::run_provider(&store, action).await
@@ -62,21 +60,38 @@ async fn main() -> anyhow::Result<()> {
             let store = SqliteStore::open(&config.db_path).await?;
             cli::run_tool(&store, action).await
         }
-        Some(Command::Hosts { action }) => cli::run_hosts(&config.domain, action),
+        Some(Command::Settings { action }) => {
+            let store = SqliteStore::open(&config.db_path).await?;
+            cli::run_settings(&store, action).await
+        }
+        Some(Command::Endpoint) => {
+            let store = SqliteStore::open(&config.db_path).await?;
+            cli::run_endpoint(&store, &config).await
+        }
+        Some(Command::Hosts { action }) => {
+            let store = SqliteStore::open(&config.db_path).await?;
+            let domain = store.get_setting("domain").await?.unwrap_or(config.domain.clone());
+            cli::run_hosts(&domain, action)
+        }
     }
 }
 
-async fn serve(config: Config) -> anyhow::Result<()> {
+async fn serve(config: Config, port_override: Option<u16>) -> anyhow::Result<()> {
     let store = Arc::new(SqliteStore::open(&config.db_path).await?);
     store.seed_default_tool_rules().await?;
+    // Preset domain/port into the settings table on first run.
+    store.seed_setting("domain", &config.domain).await?;
+    store.seed_setting("port", &config.port.to_string()).await?;
     let routes = RouteTable::load(&store).await?;
     let tools = store.load_tool_rules().await?;
     info!(routes = routes.len(), tool_rules = tools.len(), "loaded config");
     let http = reqwest::Client::builder().build()?;
 
+    // Effective settings: --port override > DB setting > bootstrap default.
+    let domain = store.get_setting("domain").await?.unwrap_or(config.domain.clone());
+    let settings_port = store.get_setting("port").await?.and_then(|s| s.parse::<u16>().ok());
+    let port = port_override.or(settings_port).unwrap_or(config.port);
     let bind = config.bind.clone();
-    let port = config.port;
-    let domain = config.domain.clone();
     let state = AppState {
         config: Arc::new(config),
         store,

@@ -218,6 +218,44 @@ impl SqliteStore {
         Ok(())
     }
 
+    // ---- settings (key/value) ----
+
+    pub async fn get_setting(&self, key: &str) -> anyhow::Result<Option<String>> {
+        let row = sqlx::query("SELECT value FROM settings WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|r| r.get::<String, _>("value")))
+    }
+
+    pub async fn set_setting(&self, key: &str, value: &str) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"INSERT INTO settings (key, value, updated_at) VALUES (?,?,?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"#,
+        )
+        .bind(key)
+        .bind(value)
+        .bind(now_ms())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Preset a setting only if it is not already present (first-run seed).
+    pub async fn seed_setting(&self, key: &str, value: &str) -> anyhow::Result<()> {
+        if self.get_setting(key).await?.is_none() {
+            self.set_setting(key, value).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn list_settings(&self) -> anyhow::Result<Vec<(String, String)>> {
+        let rows = sqlx::query("SELECT key, value FROM settings ORDER BY key")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(|r| (r.get("key"), r.get("value"))).collect())
+    }
+
     // ---- tool rules ----
 
     /// Add a tool-identification rule. Returns the new rule id.
