@@ -92,6 +92,9 @@ async fn serve(config: Config, port_override: Option<u16>) -> anyhow::Result<()>
     let settings_port = store.get_setting("port").await?.and_then(|s| s.parse::<u16>().ok());
     let port = port_override.or(settings_port).unwrap_or(config.port);
     let bind = config.bind.clone();
+
+    // Ensure the branded domain resolves to loopback (prompts for auth if needed).
+    hosts::ensure(&domain, port);
     let state = AppState {
         config: Arc::new(config),
         store,
