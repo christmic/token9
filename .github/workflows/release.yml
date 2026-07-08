@@ -28,7 +28,7 @@ jobs:
           strip dist/token9-macos-arm64/bin/token9
 
       - name: Install typeshare
-        run: brew install typeshare-cli
+        run: brew install typeshare
 
       - name: Generate Swift types
         run: ./scripts/gen-types.sh
