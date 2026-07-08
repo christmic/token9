@@ -116,6 +116,15 @@ pub async fn proxy(
     let resp_headers = resp.headers().clone();
     let upstream = resp.bytes_stream();
 
+    // Off-path: capture vendor rate-limit headers (observe-only), never blocks the client.
+    if let Some(snap) = crate::ratelimit::parse(target.dialect, &resp_headers) {
+        let store = state.store.clone();
+        let provider = target.provider.clone();
+        tokio::spawn(async move {
+            let _ = store.upsert_rate_limit(&provider, &snap).await;
+        });
+    }
+
     // Off-path metering: tee a cheap clone of each chunk into an async task (§5.1).
     let (tx, rx) = mpsc::unbounded_channel::<Bytes>();
     let meta = MeterMeta {

@@ -25,6 +25,8 @@ pub struct StatBucketDto {
     #[typeshare(serialized_as = "I54")]
     pub cache_write_tokens: i64,
     pub cache_ratio: f64,
+    /// Estimated cost in USD (from the price table; not actual billed amount).
+    pub cost: f64,
 }
 
 #[typeshare]
@@ -62,4 +64,31 @@ pub struct ModelDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelsResponse {
     pub models: Vec<ModelDto>,
+}
+
+/// Latest vendor rate-limit snapshot for a provider, captured from upstream
+/// response headers (observe-only). `*_reset` is the raw vendor value
+/// (RFC3339 for Anthropic, a duration string for OpenAI).
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitDto {
+    pub provider: String,
+    #[typeshare(serialized_as = "I54")]
+    pub updated_at: i64,
+    #[typeshare(serialized_as = "I54")]
+    pub requests_limit: Option<i64>,
+    #[typeshare(serialized_as = "I54")]
+    pub requests_remaining: Option<i64>,
+    pub requests_reset: Option<String>,
+    #[typeshare(serialized_as = "I54")]
+    pub tokens_limit: Option<i64>,
+    #[typeshare(serialized_as = "I54")]
+    pub tokens_remaining: Option<i64>,
+    pub tokens_reset: Option<String>,
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitsResponse {
+    pub rate_limits: Vec<RateLimitDto>,
 }

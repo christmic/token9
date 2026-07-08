@@ -65,3 +65,16 @@ pub struct StatBucket {
     pub cache_read_tokens: i64,
     pub cache_write_tokens: i64,
 }
+
+/// Latest vendor rate-limit snapshot for a provider (captured from response headers).
+#[derive(Debug, Clone)]
+pub struct RateLimitRow {
+    pub provider: String,
+    pub updated_at: i64,
+    pub requests_limit: Option<i64>,
+    pub requests_remaining: Option<i64>,
+    pub requests_reset: Option<String>,
+    pub tokens_limit: Option<i64>,
+    pub tokens_remaining: Option<i64>,
+    pub tokens_reset: Option<String>,
+}

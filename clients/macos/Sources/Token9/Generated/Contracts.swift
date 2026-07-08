@@ -49,6 +49,39 @@ public struct ProvidersResponse: Codable {
 	}
 }
 
+/// Latest vendor rate-limit snapshot for a provider, captured from upstream
+/// response headers (observe-only). `*_reset` is the raw vendor value
+/// (RFC3339 for Anthropic, a duration string for OpenAI).
+public struct RateLimitDto: Codable {
+	public let provider: String
+	public let updated_at: Int64
+	public let requests_limit: Int64
+	public let requests_remaining: Int64
+	public let requests_reset: String?
+	public let tokens_limit: Int64
+	public let tokens_remaining: Int64
+	public let tokens_reset: String?
+
+	public init(provider: String, updated_at: Int64, requests_limit: Int64, requests_remaining: Int64, requests_reset: String?, tokens_limit: Int64, tokens_remaining: Int64, tokens_reset: String?) {
+		self.provider = provider
+		self.updated_at = updated_at
+		self.requests_limit = requests_limit
+		self.requests_remaining = requests_remaining
+		self.requests_reset = requests_reset
+		self.tokens_limit = tokens_limit
+		self.tokens_remaining = tokens_remaining
+		self.tokens_reset = tokens_reset
+	}
+}
+
+public struct RateLimitsResponse: Codable {
+	public let rate_limits: [RateLimitDto]
+
+	public init(rate_limits: [RateLimitDto]) {
+		self.rate_limits = rate_limits
+	}
+}
+
 /// One aggregated usage bucket: provider + model + day.
 public struct StatBucketDto: Codable {
 	public let provider: String
@@ -60,8 +93,10 @@ public struct StatBucketDto: Codable {
 	public let cache_read_tokens: Int64
 	public let cache_write_tokens: Int64
 	public let cache_ratio: Double
+	/// Estimated cost in USD (from the price table; not actual billed amount).
+	public let cost: Double
 
-	public init(provider: String, model: String, date: String, requests: Int64, input_tokens: Int64, output_tokens: Int64, cache_read_tokens: Int64, cache_write_tokens: Int64, cache_ratio: Double) {
+	public init(provider: String, model: String, date: String, requests: Int64, input_tokens: Int64, output_tokens: Int64, cache_read_tokens: Int64, cache_write_tokens: Int64, cache_ratio: Double, cost: Double) {
 		self.provider = provider
 		self.model = model
 		self.date = date
@@ -71,6 +106,7 @@ public struct StatBucketDto: Codable {
 		self.cache_read_tokens = cache_read_tokens
 		self.cache_write_tokens = cache_write_tokens
 		self.cache_ratio = cache_ratio
+		self.cost = cost
 	}
 }
 

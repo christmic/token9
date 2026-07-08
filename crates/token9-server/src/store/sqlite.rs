@@ -46,6 +46,18 @@ CREATE TABLE IF NOT EXISTS logical_models (
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS provider_rate_limits (
+  provider           TEXT PRIMARY KEY,
+  updated_at         INTEGER NOT NULL,
+  requests_limit     INTEGER,
+  requests_remaining INTEGER,
+  requests_reset     TEXT,
+  tokens_limit       INTEGER,
+  tokens_remaining   INTEGER,
+  tokens_reset       TEXT,
+  raw                TEXT
+);
 "#;
 
 #[derive(Clone)]

@@ -4,8 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sqlx::Row;
 use tracing::warn;
 
-use super::{ModelRow, ProviderRow, ResolvedRoute};
+use super::{ModelRow, ProviderRow, RateLimitRow, ResolvedRoute};
 use crate::config::Dialect;
+use crate::ratelimit::RateLimitSnapshot;
 use crate::store::sqlite::SqliteStore;
 
 fn now_ms() -> i64 {
@@ -177,6 +178,66 @@ impl SqliteStore {
             });
         }
         Ok(out)
+    }
+
+    // ---- rate limits ----
+
+    /// Upsert the latest rate-limit snapshot for a provider.
+    pub async fn upsert_rate_limit(
+        &self,
+        provider: &str,
+        snap: &RateLimitSnapshot,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"INSERT INTO provider_rate_limits
+               (provider, updated_at, requests_limit, requests_remaining, requests_reset,
+                tokens_limit, tokens_remaining, tokens_reset, raw)
+               VALUES (?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(provider) DO UPDATE SET
+                 updated_at         = excluded.updated_at,
+                 requests_limit     = excluded.requests_limit,
+                 requests_remaining = excluded.requests_remaining,
+                 requests_reset     = excluded.requests_reset,
+                 tokens_limit       = excluded.tokens_limit,
+                 tokens_remaining   = excluded.tokens_remaining,
+                 tokens_reset       = excluded.tokens_reset,
+                 raw                = excluded.raw"#,
+        )
+        .bind(provider)
+        .bind(now_ms())
+        .bind(snap.requests_limit)
+        .bind(snap.requests_remaining)
+        .bind(snap.requests_reset.as_deref())
+        .bind(snap.tokens_limit)
+        .bind(snap.tokens_remaining)
+        .bind(snap.tokens_reset.as_deref())
+        .bind(&snap.raw)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_rate_limits(&self) -> anyhow::Result<Vec<RateLimitRow>> {
+        let rows = sqlx::query(
+            r#"SELECT provider, updated_at, requests_limit, requests_remaining, requests_reset,
+                      tokens_limit, tokens_remaining, tokens_reset
+               FROM provider_rate_limits ORDER BY provider"#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| RateLimitRow {
+                provider: r.get("provider"),
+                updated_at: r.get("updated_at"),
+                requests_limit: r.get("requests_limit"),
+                requests_remaining: r.get("requests_remaining"),
+                requests_reset: r.get("requests_reset"),
+                tokens_limit: r.get("tokens_limit"),
+                tokens_remaining: r.get("tokens_remaining"),
+                tokens_reset: r.get("tokens_reset"),
+            })
+            .collect())
     }
 }
 

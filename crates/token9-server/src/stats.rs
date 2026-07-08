@@ -36,6 +36,13 @@ pub async fn summary(
             } else {
                 0.0
             };
+            let cost = state.pricing.cost(
+                &b.real_model,
+                b.input_tokens,
+                b.output_tokens,
+                b.cache_read_tokens,
+                b.cache_write_tokens,
+            );
             StatBucketDto {
                 provider: b.provider,
                 model: b.real_model,
@@ -46,6 +53,7 @@ pub async fn summary(
                 cache_read_tokens: b.cache_read_tokens,
                 cache_write_tokens: b.cache_write_tokens,
                 cache_ratio,
+                cost: (cost * 1_000_000.0).round() / 1_000_000.0,
             }
         })
         .collect();
