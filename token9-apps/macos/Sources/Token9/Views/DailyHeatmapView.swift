@@ -57,29 +57,28 @@ struct DailyHeatmapView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Month + legend
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 0) {
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Theme.tSecondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.tPrimary)
                 Spacer()
-                Text(L10n.less).font(.system(size: 8)).foregroundStyle(Theme.tTertiary)
-                ForEach(0..<5, id: \.self) { lv in
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(fill([0.12, 0.26, 0.44, 0.62, 0.84][lv]))
-                        .frame(width: 8, height: 8)
+                HStack(spacing: 2) {
+                    Text(L10n.less).font(.system(size: 8)).foregroundStyle(Theme.tTertiary)
+                    ForEach(0..<5, id: \.self) { lv in
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(fill([0.12, 0.26, 0.44, 0.62, 0.84][lv]))
+                            .frame(width: 8, height: 8)
+                    }
+                    Text(L10n.more).font(.system(size: 8)).foregroundStyle(Theme.tTertiary)
                 }
-                Text(L10n.more).font(.system(size: 8)).foregroundStyle(Theme.tTertiary)
             }
 
-            // Grid: day headers + rows
             VStack(spacing: s) {
                 HStack(spacing: s) {
                     ForEach(0..<cols, id: \.self) { i in
                         Text(hdrs[i]).font(.system(size: 8, design: .monospaced))
-                            .foregroundStyle(Theme.tTertiary)
-                            .frame(width: c)
+                            .foregroundStyle(Theme.tTertiary).frame(width: c)
                     }
                 }
                 ForEach(rows.indices, id: \.self) { ri in
@@ -94,14 +93,11 @@ struct DailyHeatmapView: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black.opacity(0.18))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.05), lineWidth: 0.5)
-                )
+                .fill(Color.black.opacity(0.14))
         )
     }
 
