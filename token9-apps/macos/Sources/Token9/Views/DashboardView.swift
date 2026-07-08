@@ -15,6 +15,7 @@ struct DashboardView: View {
                 topBar
                 SegmentedTabs(sel: $vm.range)
                 groupBar
+                heatmapSection
                 content
             }
             .padding(Theme.outerPad)
@@ -55,6 +56,19 @@ struct DashboardView: View {
             .labelsHidden()
             .frame(width: 150)
             Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var heatmapSection: some View {
+        if !vm.dailyTotals.isEmpty {
+            DailyHeatmapView(
+                dailyTotals: vm.dailyTotals,
+                fromDate: vm.range.range().from,
+                toDate: vm.range.range().to,
+                mode: mode
+            )
+            .transition(.opacity)
         }
     }
 
