@@ -1,0 +1,26 @@
+port = 9527
+bind = "127.0.0.1"
+db_path = "~/.Oraculo/config/token9/token9.db"
+
+# Providers: real backends. Credentials are referenced via *_env, never inlined.
+[providers.anthropic]
+base_url = "https://api.anthropic.com"
+api_key_env = "ANTHROPIC_API_KEY"
+dialect = "anthropic"
+
+[providers.deepseek]
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+dialect = "openai_chat"
+
+# Routes: logical model_id -> provider. real_model defaults to model_id (no body rewrite).
+[[routes]]
+model_id = "claude-opus-4-6"
+provider = "anthropic"
+
+# Alias example: client asks for "my-cheap-coder", gateway rewrites to "deepseek-chat".
+[[routes]]
+model_id = "my-cheap-coder"
+provider = "deepseek"
+real_model = "deepseek-chat"
+inject_usage = true   # opt-in: OpenAI Chat streaming needs stream_options.include_usage
