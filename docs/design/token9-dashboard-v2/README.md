@@ -1,6 +1,6 @@
 # token9 Dashboard UI v2
 
-Status: design proposal  
+Status: design proposal
 Scope: macOS menu-bar popover only; no implementation changes
 
 ## Product direction
@@ -82,4 +82,3 @@ volume; explicit rank numbers are not shown.
   when the heatmap is present.
 - Seed-orange indicates selection or peak activity; it is not a generic border
   color for every container.
-
